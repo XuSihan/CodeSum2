@@ -10,6 +10,7 @@ class FeatureDictionary:
         self.next_id = 0
         self.token_to_id = {}
         self.id_to_token = {}
+        self.add_or_get_id(self.get_none())
         self.add_or_get_id(self.get_unk())
 
     def add_or_get_id(self, token):
@@ -22,6 +23,9 @@ class FeatureDictionary:
         self.id_to_token[this_id] = token
 
         return this_id
+
+    def get_n_tokens(self):
+        return self.next_id
 
     def is_unk(self, token):
         return token not in self.token_to_id
@@ -55,10 +59,11 @@ class FeatureDictionary:
         return "%UNK%" #unknown
 
     @staticmethod
-    def get_feature_dictionary_for(tokens, count_threshold=10):
+    def get_none():
+        return "%NONE%" #none for padding
+
+    def get_feature_dictionary_for(self, tokens, count_threshold=10):
         token_counter = Counter(tokens)
-        feature_dict = FeatureDictionary()
         for token, count in token_counter.iteritems():
             if count >= count_threshold:
-                feature_dict.add_or_get_id(token)
-        return feature_dict
+               self.add_or_get_id(token)
