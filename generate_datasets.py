@@ -8,7 +8,7 @@ import pickle
 from itertools import chain
 from feature_dict import FeatureDictionary
 
-class dataGenerator(object):
+class DataGenerator(object):
 	METHOD_START = "%M_START%" 
 	METHOD_END = "%M_END%"
 	SENTENCE_START = "%S_START%" 
@@ -16,15 +16,15 @@ class dataGenerator(object):
 	NAME_START = "%N_START%"
 	NAME_END = "%N_END%"
 
-	def __init__(self,filepath): 
+	def __init__(self, names, codes): 
 		'''
 		mode:
 			String: convert a method into a string
 			Sentences: convert a method into sentences
 		'''
-		self.filepath = filepath
+		self.names = names
+		self.codes = codes
 
-		self.names, self.codes, self.sentences = self.get_input_file()
 		#not used for now
 		self.name_dictionary = FeatureDictionary()
 		self.name_dictionary.add_or_get_id(self.NAME_START)
@@ -37,10 +37,10 @@ class dataGenerator(object):
 		self.all_tokens_dictionary.add_or_get_id(self.METHOD_END)
 		self.all_tokens_dictionary.add_or_get_id(self.NAME_START)
 		self.all_tokens_dictionary.add_or_get_id(self.NAME_END)
-
 		self.all_tokens_dictionary.get_feature_dictionary_for(chain.from_iterable([chain.from_iterable(self.codes), chain.from_iterable(self.names)]), 5)
 
-	def split_str(self,string):
+	@staticmethod
+	def split_str(string):
 		"""
 		Tokenization/string cleaning for dataset
 		Every dataset is lower cased except
@@ -72,11 +72,12 @@ class dataGenerator(object):
 							result.append(s.lower())
 		return (result)
 
-	def get_input_file(self):
+	@staticmethod
+	def get_input_file(input_file):
 		names = []
 		codes = []
 		sentences = []
-		with open (self.filepath,'r') as f:
+		with open (input_file,'r') as f:
 			print ('load data...')
 			unicode_data = json.load(f) # read files
 			str_data = json.dumps(unicode_data) # convert into str
@@ -93,61 +94,77 @@ class dataGenerator(object):
 						continue
 					if len(sentence) == 0:
 						continue 
-					tokens = self.split_str(sentence)
+					tokens = DataGenerator.split_str(sentence)
 					strBody += tokens
-					sentBody.append([self.SENTENCE_START] + tokens + [self.SENTENCE_END])
+					sentBody.append([DataGenerator.SENTENCE_START] + tokens + [DataGenerator.SENTENCE_END])
 				# filter methods
-				sentences.append([self.METHOD_START] + sentBody + [self.METHOD_END])
-				strBody = [self.METHOD_START] + strBody + [self.METHOD_END]
+				sentences.append([DataGenerator.METHOD_START] + sentBody + [DataGenerator.METHOD_END])
+				strBody = [DataGenerator.METHOD_START] + strBody + [DataGenerator.METHOD_END]
 				codes.append(strBody)
-				names.append([self.NAME_START] + self.split_str(method['methodName'][0]) + [self.NAME_END])
+				names.append([DataGenerator.NAME_START] + DataGenerator.split_str(method['methodName'][0]) + [DataGenerator.NAME_END])
 		return names,codes,sentences
 
-	def get_data_for_basic_seq2seq(self,max_code_tokens, max_name_tokens):
-		assert len(self.names) == len(self.codes), (len(self.names), len(self.codes))
+	def get_data_for_simple_seq2seq(self, names, codes, max_name_size, max_code_size):
+		assert len(names) == len(codes), (len(names), len(codes))
+		if len(names) == 0:
+			return None, None
 		id_names = []
 		id_codes = []
 		padding = [self.all_tokens_dictionary.get_id_or_unk(self.all_tokens_dictionary.get_none())] # padding = 0
+		print ('padding integer = ', padding)
 		with open('err_names.txt','w') as f, open('err_codes.txt','w') as f2:
-			for i, name in enumerate(self.names):
+			for i, name in enumerate(names):
 				t_name = []
 				t_codes = []
 				
 				for j in range(len(name)):
 					t_name.append(self.all_tokens_dictionary.get_id_or_unk(name[j]))
 				
-				for j in range(len(self.codes[i])):
-					t_codes.append(self.all_tokens_dictionary.get_id_or_unk(self.codes[i][j]))
+				for j in range(len(codes[i])):
+					t_codes.append(self.all_tokens_dictionary.get_id_or_unk(codes[i][j]))
 				
-				if len(t_codes) <= max_code_tokens:
-					t_codes += padding * (max_code_tokens- len(t_codes))
+				if len(t_codes) <= max_code_size:
+					t_codes += padding * (max_code_size- len(t_codes))
 				else:
 					f2.write('len(t_codes) == %d \n' % len(t_codes))
 					continue
-				assert len(t_codes) == max_code_tokens, (len(t_codes),max_code_tokens)
+				assert len(t_codes) == max_code_size, (len(t_codes), max_code_size)
 				
-				if len(t_name) <= max_name_tokens:
-					t_name += padding * (max_name_tokens- len(t_name))
+				if len(t_name) <= max_name_size:
+					t_name += padding * (max_name_size- len(t_name))
 				else:
 					f.write('len(t_name) == %d \n' % len(t_name))
 					continue
-				assert len(t_name) == max_name_tokens, (len(t_name),max_name_tokens)
+				assert len(t_name) == max_name_size, (len(t_name),max_name_size)
 
 				id_names.append(t_name)
 				id_codes.append(t_codes)
 		assert len(id_names) == len(id_codes), (len(id_names), len(id_codes))	
 		id_names = np.array(id_names,dtype = np.int32)
 		id_codes = np.array(id_codes,dtype = np.int32)
-		print ('id_names.shape: ', id_names.shape)
-		print ('id_codes.shape: ', id_codes.shape)
-		vocabulary_size = self.all_tokens_dictionary.get_n_tokens() 
-		print ('vocabulary_size (including none, unknown..): ', vocabulary_size)
-		return id_names, id_codes, vocabulary_size
+		return id_names, id_codes
+
+	@staticmethod
+	def get_data_for_simple_seq2seq_with_validation_and_test(input_file, max_name_size, max_code_size, pct_train, pct_val, pct_test):
+		assert pct_train > 0
+		assert pct_val > 0
+		assert pct_test >= 0
+		assert (pct_train + pct_val + pct_test) == 1.0
+		all_names, all_codes, all_sentences = DataGenerator.get_input_file(input_file)	
+		assert len(all_names) == len(all_codes), (len(all_names), len(all_codes))
+		train_and_val = int((pct_train + pct_val) * len(all_names))
+		train_size = int(pct_train * len(all_names))
+		idxs = np.arange(len(all_names))
+		np.random.shuffle(idxs)
+		naming = DataGenerator(all_names[idxs[:train_size]], all_codes[idxs[:train_size]])
+		return naming.get_data_for_simple_seq2seq(all_names[idxs[:train_size]], all_codes[idxs[:train_size]], max_name_size, max_code_size),\
+			naming.get_data_for_simple_seq2seq(all_names[idxs[train_size:train_and_val]], all_codes[idxs[train_size:train_and_val]], max_name_size, max_code_size),\
+			naming.get_data_for_simple_seq2seq(all_names[idxs[train_and_val:]], all_codes[idxs[train_and_val:]], max_name_size, max_code_size),\
+			naming
 
 if __name__ == '__main__':
 	if len(sys.argv) > 1:
 		filepath = sys.argv[1]
-		test = dataGenerator(filepath)
 		'''	
 		with open ('names.txt','w') as f:
 			for name in test.names:
@@ -156,4 +173,4 @@ if __name__ == '__main__':
 			for code in test.codes:
 				f.write(' '.join(code) + '\n')
 		'''
-		test.get_data_for_basic_seq2seq(300,10)
+		DataGenerator.get_data_for_simple_seq2seq_with_validation_and_test(filepath, 10,300, 0.65, 0.05, 0.3)
