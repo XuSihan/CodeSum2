@@ -102,6 +102,9 @@ class DataGenerator(object):
 				strBody = [DataGenerator.METHOD_START] + strBody + [DataGenerator.METHOD_END]
 				codes.append(strBody)
 				names.append([DataGenerator.NAME_START] + DataGenerator.split_str(method['methodName'][0]) + [DataGenerator.NAME_END])
+		names = np.array(names, dtype = np.object)		
+		codes = np.array(codes, dtype = np.object)		
+		sentences = np.array(sentences, dtype = np.object)		
 		return names,codes,sentences
 
 	def get_data_for_simple_seq2seq(self, names, codes, max_name_size, max_code_size):

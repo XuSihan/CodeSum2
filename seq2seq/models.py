@@ -60,6 +60,16 @@ def SimpleSeq2Seq(output_dim, output_length, hidden_dim=None, input_shape=None,
 
     if hidden_dim is None:
         hidden_dim = output_dim
+    
+    if is_embedding:
+        _input = Input(batch_shape=shape)
+    else:
+        i = Input(shape=(input_length,), name='sentence_input', dtype='int32')
+        if embedding_dim is None:
+            embedding_dim = hidden_dim
+        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length)(i)
+        shape = (batch_size,) + (input_length,) + (embedding_dim,)
+
     encoder = RecurrentSequential(unroll=unroll, stateful=stateful)
     encoder.add(LSTMCell(hidden_dim, batch_input_shape=(shape[0], shape[-1])))
 
@@ -80,17 +90,14 @@ def SimpleSeq2Seq(output_dim, output_length, hidden_dim=None, input_shape=None,
             decoder.add(LSTMCell(hidden_dim))
     decoder.add(Dropout(dropout))
     decoder.add(LSTMCell(output_dim))
-    if is_embedding:
-        _input = Input(batch_shape=shape)
-    else:
-        i = Input(shape=(input_length,), name='sentence_input', dtype='int32')
-        if embedding_dim is None:
-            embedding_dim = hidden_dim
-        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length)(i)
-    x = encoder(_input)
-    output = decoder(x)
-    return Model(_input, output)
 
+    x = encoder(_input)
+    decoder_outputs = decoder(x)
+    output = TimeDistributed(Dense(n_tokens, activation='softmax'))(decoder_outputs)
+    if is_embedding:
+        return Model(_input, output)
+    else:
+        return Model(i,output)
 
 def Seq2Seq(output_dim, output_length, batch_input_shape=None,
             input_shape=None, batch_size=None, input_dim=None, input_length=None,
