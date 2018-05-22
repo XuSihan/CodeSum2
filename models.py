@@ -1,5 +1,4 @@
 from __future__ import print_function
-from simple_seq2seq_learner import SimpleSeq2SeqLearner
 import sys
 import numpy as np
 from keras import optimizers
@@ -7,7 +6,7 @@ from seq2seq.models import SimpleSeq2Seq
 from generate_datasets import DataGenerator
 
 class trainModel(object):
-	def __init__(self, train_names, train_codes, hyperparams, model_name='SimpleSeq2Seq'):
+	def __init__(self, train_names, train_codes, model_name, hyperparams=None):
 		self.train_names = train_names
 		self.train_codes = train_codes
 		self.hyperparams = hyperparams
@@ -39,7 +38,7 @@ class trainModel(object):
 		self.parameters = None # if the model has been trained, parameters will not be None.
 		self.naming_data = None # the dictionary to decode/encode tokens
 		
-		self._check_all_hyperparmeters_exist()
+		# self._check_all_hyperparmeters_exist()
 		# for seq2seq models
 		# self.n_tokens = self.naming_data.all_tokens_dictionary.get_n_tokens()
 
@@ -68,16 +67,16 @@ class trainModel(object):
 	def grid_search(self):
 		output_dim = [200, 500]
 		output_length = [5, 8]
-		hidden_dim = [50, 200, 500]
-		batch_size = [50, 100, 200]
+		hidden_dim = [200, 500]
+		batch_size = [100, 200]
 		input_length = [300, 500]
 		depth = [1, 3]
 		dropout = [0.1, 0.3, 0.5]
 
 		lr = [0.0001, 0.0005, 0.001, 0.005] 
-		num_epoch = [100, 500]
+		num_epoch = [20, 100, 500]
 
-		k_fold = 5
+		k_fold = 10
 		best_score = 0
 		best_hyparams = []
 		assert len(self.train_names) == len(self.train_codes), (len(self.train_names), len(self.train_codes))
@@ -94,7 +93,7 @@ class trainModel(object):
 											for __, t_num_epoch in enumerate(num_epoch):
 												t_params = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, lr=t_lr, num_epoch=t_num_epoch)
 												f.write(str(t_params) + '\n')
-												accuracy_sum = 0
+												accuracy_sum = 0.0
 												# cross validation												
 												id_train_name, id_train_code, id_val_name, id_val_code, naming_data, n_tokens = trainModel.cross_validation_data(self.train_names, self.train_codes, t_output_length, t_input_length, k_fold)
 												assert len(id_train_name) == k_fold, (len(id_train_name), k_fold)
@@ -117,7 +116,7 @@ class trainModel(object):
 
 													t_model = SimpleSeq2Seq(**self.hyperparams)
 
-													t_my_adam = optimizers.Adam(lr=t_lr)
+													t_my_adam = optimizers.Adam(lr=t_lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
 													t_model.compile(optimizer=t_my_adam, loss='categorical_crossentropy')
 
 													print ('fit...')		
@@ -146,7 +145,7 @@ class trainModel(object):
 															f.write('suggestions: ' + str(suggestions[i]) + '\n')
 															f.write('\n')
 													'''
-												average_accuracy = accuracy_sum/(float)k_fold
+												average_accuracy = accuracy_sum/k_fold
 												f.write('\naverage accuracy: %d \n\n' % average_accuracy)
 												if average_accuracy > best_score:
 													best_score = average_accuracy
@@ -166,16 +165,19 @@ class trainModel(object):
 		n_tokens = []
 	
 		n_samples = len(train_names)
-		per_size = int(n_samples/5)
+		per_size = int(n_samples/k_fold)
+		print ('per_size: ', per_size)
 	
 		#cross validation
 		for i in range(k_fold - 1):
 			val_name = train_names[i*per_size:(i+1)*per_size]
 			val_code = train_codes[i*per_size:(i+1)*per_size]
-			train_name = np.vstack((train_names[:i*per_size], train_names[(i+1)*per_size:]))
-			train_code = np.vstack((train_codes[:i*per_size], train_codes[(i+1)*per_size:]))
+			train_name = np.delete(train_names, range(i*per_size,(i+1)*per_size), 0)
+			train_code = np.delete(train_codes, range(i*per_size,(i+1)*per_size), 0)
 			assert len(train_name) == len(train_code), (len(train_name), len(train_code))
 			assert len(val_name) == len(val_code), (len(val_name), len(val_code))
+			print ('the number of training samples: ', len(train_name))
+			print ('the number of validation samples: ', len(val_name))
 			t_naming_data = DataGenerator(train_name, train_code)												
 			t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
 			t_id_val_name, t_id_val_code = t_naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
@@ -190,13 +192,17 @@ class trainModel(object):
 
 		val_name = train_names[(k_fold-1)*per_size:]
 		val_code = train_codes[(k_fold-1)*per_size:]
-		train_name = train_names[:(k_fold-1)*per_size]
-		train_code = train_codes[:(k_fold-1)*per_size]
+		train_name = np.delete(train_names, range(i*per_size,(i+1)*per_size), 0)
+		train_code = np.delete(train_codes, range(i*per_size,(i+1)*per_size), 0)
+
 		assert len(train_name) == len(train_code), (len(train_name), len(train_code))
 		assert len(val_name) == len(val_code), (len(val_name), len(val_code))
+		print ('the number of training samples: ', len(train_name))
+		print ('the number of validation samples: ', len(val_name))
+
 		t_naming_data = DataGenerator(train_name, train_code)												
-		t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, self.hyperparams['output_length'], self.hyperparams['input_length'])
-		t_id_val_name, t_id_val_code = self.naming_data.get_data_for_simple_seq2seq(val_name, val_code, self.hyperparams['output_length'], self.hyperparams['input_length'])
+		t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
+		t_id_val_name, t_id_val_code = t_naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
 		t_n_tokens = t_naming_data.all_tokens_dictionary.get_n_tokens()
 
 		id_train_name.append(t_id_train_name)
@@ -244,18 +250,12 @@ class trainModel(object):
 		for i in range(n_samples):
 			name = []
 			for j in range(n_timesteps):
-				name.append(self.naming_data.all_tokens_dictionary.get_name_for_id(predict_idx[i][j]))
+				name.append(naming_data.all_tokens_dictionary.get_name_for_id(predict_idx[i][j]))
 			predict_names.append(name)
 		predict_names = np.array(predict_names, dtype=np.object)
 		assert predict_names.shape == predict_idx.shape, (predict_names.shape, predict_idx.shape)
 		return predict_names
 
-	def _check_all_hyperparmeters_exist(self):
-		all_params = ["output_dim", "output_length"]
-
-		for param in all_params:
-			assert param in self.hyperparameters, param
-			
 if __name__ == '__main__':
 	if len(sys.argv) > 2:
 		filepath = sys.argv[1]
@@ -274,5 +274,7 @@ if __name__ == '__main__':
 		test_names = names[idx[train_size:]]
 		test_codes = codes[idx[train_size:]]
 
+		print ('the number of training and validation samples: ', len(train_names))
+		print ('the number of testing samples: ', len(test_names))
 		model = trainModel(train_names, train_codes, model_name)
 		model.grid_search()
