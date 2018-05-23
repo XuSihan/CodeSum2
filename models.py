@@ -12,28 +12,6 @@ class trainModel(object):
 		self.hyperparams = hyperparams
 		self.model_name = model_name
 
-		'''
-		#for all models 
-		self.output_dim = 128
-		self.output_length = 8
-		self.input_length = 300
-		self.is_embedding = False
-		self.dropout = 0.0
-		self.batch_size = 40
-		self.hidden_dim = 128
-
-		self.lr = 0.01
-		self.num_epoch = 100
-
-		# for seq2seq models
-		self.depth = 1
-		self.unroll = False
-		self.stateful = False
-
-		# for seq2seq models except SimpleSeq2Seq
-		self.teach_force = True
-		'''
-
 		self.model = None
 		self.parameters = None # if the model has been trained, parameters will not be None.
 		self.naming_data = None # the dictionary to decode/encode tokens
