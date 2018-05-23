@@ -48,7 +48,7 @@ class DataGenerator(object):
 		string = re.sub(r"\\", "", string)    
 		string = re.sub(r"\'", "", string)    
 		string = re.sub(r"\"", "", string) 
-		a = re.split(r"([^a-zA-Z]+)",string)
+		a = re.split(r"[^a-zA-Z]+",string)
 		result = []
 		for items in a:
 			items = re.sub(r"\s", "", items)
@@ -114,34 +114,30 @@ class DataGenerator(object):
 		id_names = []
 		id_codes = []
 		padding = [self.all_tokens_dictionary.get_id_or_unk(self.all_tokens_dictionary.get_none())] # padding = 0
-		print ('padding integer = ', padding)
-		with open('err_names.txt','w') as f, open('err_codes.txt','w') as f2:
-			for i, name in enumerate(names):
-				t_name = []
-				t_codes = []
-				
-				for j in range(len(name)):
-					t_name.append(self.all_tokens_dictionary.get_id_or_unk(name[j]))
-				
-				for j in range(len(codes[i])):
-					t_codes.append(self.all_tokens_dictionary.get_id_or_unk(codes[i][j]))
-				
-				if len(t_codes) <= max_code_size:
-					t_codes += padding * (max_code_size- len(t_codes))
-				else:
-					f2.write('len(t_codes) == %d \n' % len(t_codes))
-					continue
-				assert len(t_codes) == max_code_size, (len(t_codes), max_code_size)
-				
-				if len(t_name) <= max_name_size:
-					t_name += padding * (max_name_size- len(t_name))
-				else:
-					f.write('len(t_name) == %d \n' % len(t_name))
-					continue
-				assert len(t_name) == max_name_size, (len(t_name),max_name_size)
+		for i, name in enumerate(names):
+			t_name = []
+			t_codes = []
+			
+			for j in range(len(name)):
+				t_name.append(self.all_tokens_dictionary.get_id_or_unk(name[j]))
+			
+			for j in range(len(codes[i])):
+				t_codes.append(self.all_tokens_dictionary.get_id_or_unk(codes[i][j]))
+			
+			if len(t_codes) <= max_code_size:
+				t_codes += padding * (max_code_size- len(t_codes))
+			else:
+				continue
+			assert len(t_codes) == max_code_size, (len(t_codes), max_code_size)
+			
+			if len(t_name) <= max_name_size:
+				t_name += padding * (max_name_size- len(t_name))
+			else:
+				continue
+			assert len(t_name) == max_name_size, (len(t_name),max_name_size)
 
-				id_names.append(t_name)
-				id_codes.append(t_codes)
+			id_names.append(t_name)
+			id_codes.append(t_codes)
 		assert len(id_names) == len(id_codes), (len(id_names), len(id_codes))	
 		id_names = np.array(id_names,dtype = np.int32)
 		id_codes = np.array(id_codes,dtype = np.int32)

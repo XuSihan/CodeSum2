@@ -1,5 +1,10 @@
 from __future__ import print_function
+import os
+import tensorflow as tf
+import keras.backend.tensorflow_backend as KTF
+
 import sys
+import keras
 import numpy as np
 from keras import optimizers
 from seq2seq.models import SimpleSeq2Seq
@@ -24,7 +29,7 @@ class trainModel(object):
 	def _check_all_hyperparmeters_exist(self):
 		if self.model_name == 'SimpleSeq2Seq':
 			'''
-			output_dim: for the last layer of decoder
+			output_dim: for the second last layer of decoder
 			output_length: the same with maximum name size
 			input_length: the same with maximum code size
 			'''
@@ -42,9 +47,9 @@ class trainModel(object):
 				X[i, j, token] = 1.0
 		return X
 
-	def grid_search(self):
+	def grid_search(self, output_file):
 		output_dim = [200, 500]
-		output_length = [5, 8]
+		output_length = [8]
 		hidden_dim = [200, 500]
 		batch_size = [100, 200]
 		input_length = [300, 500]
@@ -59,7 +64,7 @@ class trainModel(object):
 		best_hyparams = []
 		assert len(self.train_names) == len(self.train_codes), (len(self.train_names), len(self.train_codes))
 		# grid search
-		with open('grid_search_results.txt', 'w') as f:
+		with open(output_file, 'w') as f:
 			for __, t_output_dim in enumerate(output_dim):
 				for __, t_output_length in enumerate(output_length):
 					for __, t_hidden_dim in enumerate(hidden_dim):
@@ -102,27 +107,14 @@ class trainModel(object):
 
 													print ('predict...')
 													t_predict_probs = t_model.predict(t_val_code)
-													print ('predict_probs.shape: ', t_predict_probs.shape)
 													
 													t_predict_idx = np.argmax(t_predict_probs, axis=2)
-													print('predict_idx.shape: ', t_predict_idx.shape)
 
 													print('Exact match evaluate...')
 													t_exact_match_accuracy = trainModel.exact_match(t_naming_data, t_predict_idx, t_val_name)
-													print('exact_match_accuracy: ', t_exact_match_accuracy)
 													f.write('%d, ' % t_exact_match_accuracy)
 													accuracy_sum += t_exact_match_accuracy
 
-													'''
-													suggestions = trainModel.show_names(t_naming_data, t_predict_idx)
-													original_names = trainModel.show_names(t_naming_data, t_val_name)
-
-													with open('suggestions.txt', 'w') as f:
-														for i in range(len(suggestions)):
-															f.write('original name: ' + str(original_names[i]) + '\n')
-															f.write('suggestions: ' + str(suggestions[i]) + '\n')
-															f.write('\n')
-													'''
 												average_accuracy = accuracy_sum/k_fold
 												f.write('\naverage accuracy: %d \n\n' % average_accuracy)
 												if average_accuracy > best_score:
@@ -154,13 +146,14 @@ class trainModel(object):
 			train_code = np.delete(train_codes, range(i*per_size,(i+1)*per_size), 0)
 			assert len(train_name) == len(train_code), (len(train_name), len(train_code))
 			assert len(val_name) == len(val_code), (len(val_name), len(val_code))
-			print ('the number of training samples: ', len(train_name))
-			print ('the number of validation samples: ', len(val_name))
 			t_naming_data = DataGenerator(train_name, train_code)												
 			t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
 			t_id_val_name, t_id_val_code = t_naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
 			t_n_tokens = t_naming_data.all_tokens_dictionary.get_n_tokens()
 			
+			print (t_id_train_code)
+			print (t_id_train_name)
+
 			id_train_name.append(t_id_train_name)
 			id_train_code.append(t_id_train_code)
 			id_val_name.append(t_id_val_name)
@@ -175,8 +168,6 @@ class trainModel(object):
 
 		assert len(train_name) == len(train_code), (len(train_name), len(train_code))
 		assert len(val_name) == len(val_code), (len(val_name), len(val_code))
-		print ('the number of training samples: ', len(train_name))
-		print ('the number of validation samples: ', len(val_name))
 
 		t_naming_data = DataGenerator(train_name, train_code)												
 		t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
@@ -235,9 +226,17 @@ class trainModel(object):
 		return predict_names
 
 if __name__ == '__main__':
-	if len(sys.argv) > 2:
+
+	os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+	config = tf.ConfigProto()
+	config.gpu_options.allow_growth=True
+	sess = tf.Session(config=config)
+	KTF.set_session(sess)
+
+	if len(sys.argv) > 3:
 		filepath = sys.argv[1]
 		model_name = sys.argv[2]
+		output_file = sys.argv[3]
 
 		names, codes, sentences = DataGenerator.get_input_file(filepath)
 		assert len(names) == len(codes), (len(names), len(codes))
@@ -245,7 +244,7 @@ if __name__ == '__main__':
 		#0.7 for train and val, 0.3 for test
 		train_size = int(0.7 * len(names))
 		idx = np.arange(len(names))
-		np.random.shuffle(idx)
+		# np.random.shuffle(idx)
 
 		train_names = names[idx[:train_size]]
 		train_codes = codes[idx[:train_size]]
@@ -255,4 +254,4 @@ if __name__ == '__main__':
 		print ('the number of training and validation samples: ', len(train_names))
 		print ('the number of testing samples: ', len(test_names))
 		model = trainModel(train_names, train_codes, model_name)
-		model.grid_search()
+		model.grid_search(output_file)
