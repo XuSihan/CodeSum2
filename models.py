@@ -20,7 +20,7 @@ class trainModel(object):
 		self.model = None
 		self.parameters = None # if the model has been trained, parameters will not be None.
 		self.naming_data = None # the dictionary to decode/encode tokens
-		
+
 		# self._check_all_hyperparmeters_exist()
 		# for seq2seq models
 		# self.n_tokens = self.naming_data.all_tokens_dictionary.get_n_tokens()
@@ -51,15 +51,15 @@ class trainModel(object):
 		output_dim = [200, 500]
 		output_length = [8]
 		hidden_dim = [200, 500]
-		batch_size = [100, 200]
-		input_length = [300, 500]
+		batch_size = [256] #, 200]
+		input_length = [300]# , 500]
 		depth = [1, 3]
-		dropout = [0.1, 0.3, 0.5]
+		dropout = [0.3, 0.5]
 
-		lr = [0.0001, 0.0005, 0.001, 0.005] 
-		num_epoch = [20, 100, 500]
+		lr = [0.001] #, 0.0005, 0.001, 0.005]
+		num_epoch = [100] #, 500]
 
-		k_fold = 10
+		k_fold = 5
 		best_score = 0
 		best_hyparams = []
 		assert len(self.train_names) == len(self.train_codes), (len(self.train_names), len(self.train_codes))
@@ -77,7 +77,7 @@ class trainModel(object):
 												t_params = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, lr=t_lr, num_epoch=t_num_epoch)
 												f.write(str(t_params) + '\n')
 												accuracy_sum = 0.0
-												# cross validation												
+												# cross validation
 												id_train_name, id_train_code, id_val_name, id_val_code, naming_data, n_tokens = trainModel.cross_validation_data(self.train_names, self.train_codes, t_output_length, t_input_length, k_fold)
 												assert len(id_train_name) == k_fold, (len(id_train_name), k_fold)
 												for i in range(k_fold):
@@ -102,12 +102,12 @@ class trainModel(object):
 													t_my_adam = optimizers.Adam(lr=t_lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
 													t_model.compile(optimizer=t_my_adam, loss='categorical_crossentropy')
 
-													print ('fit...')		
+													print ('fit...')
 													t_model.fit(t_train_code, t_train_name, epochs = t_num_epoch)
 
 													print ('predict...')
 													t_predict_probs = t_model.predict(t_val_code)
-													
+
 													t_predict_idx = np.argmax(t_predict_probs, axis=2)
 
 													print('Exact match evaluate...')
@@ -120,6 +120,8 @@ class trainModel(object):
 												if average_accuracy > best_score:
 													best_score = average_accuracy
 													best_hyparams = t_params
+                                                                                                # run model only once
+                                                                                                return best_score, best_hyparams
 		return best_score, best_hyparams
 
 
@@ -133,11 +135,11 @@ class trainModel(object):
 		id_val_code = []
 		naming_data = []
 		n_tokens = []
-	
+
 		n_samples = len(train_names)
 		per_size = int(n_samples/k_fold)
 		print ('per_size: ', per_size)
-	
+
 		#cross validation
 		for i in range(k_fold - 1):
 			val_name = train_names[i*per_size:(i+1)*per_size]
@@ -146,11 +148,11 @@ class trainModel(object):
 			train_code = np.delete(train_codes, range(i*per_size,(i+1)*per_size), 0)
 			assert len(train_name) == len(train_code), (len(train_name), len(train_code))
 			assert len(val_name) == len(val_code), (len(val_name), len(val_code))
-			t_naming_data = DataGenerator(train_name, train_code)												
+			t_naming_data = DataGenerator(train_name, train_code)
 			t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
 			t_id_val_name, t_id_val_code = t_naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
 			t_n_tokens = t_naming_data.all_tokens_dictionary.get_n_tokens()
-			
+
 			print (t_id_train_code)
 			print (t_id_train_name)
 
@@ -169,7 +171,7 @@ class trainModel(object):
 		assert len(train_name) == len(train_code), (len(train_name), len(train_code))
 		assert len(val_name) == len(val_code), (len(val_name), len(val_code))
 
-		t_naming_data = DataGenerator(train_name, train_code)												
+		t_naming_data = DataGenerator(train_name, train_code)
 		t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
 		t_id_val_name, t_id_val_code = t_naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
 		t_n_tokens = t_naming_data.all_tokens_dictionary.get_n_tokens()
@@ -185,7 +187,7 @@ class trainModel(object):
 
 	@staticmethod
 	def exact_match(naming_data, predict_idx, val_name):
-		n_correct = 0
+		n_correct = 0.0
 		correct_idx = []
 		end_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.NAME_END)
 		assert predict_idx.shape == val_name.shape, (predict_idx.shape, val_name.shape)
