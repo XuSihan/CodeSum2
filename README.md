@@ -7,4 +7,4 @@ keras>=2.1
 
 python models.py <input_file> <model_name> <output_file>
 ### For example:
-python models.py cassandra/cassandra.json SimpleSeq2Seq train_results
+python models.py cassandra/cassandra.json Seq2Seq train_results
