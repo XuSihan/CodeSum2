@@ -47,24 +47,25 @@ class trainModel(object):
 				X[i, j, token] = 1.0
 		return X
 
-	def grid_search(self, output_file):
-		output_dim = [200, 500]
+	def grid_search(self, output_folder):
+		assert len(self.train_names) == len(self.train_codes), (len(self.train_names), len(self.train_codes))
+
+		output_dim = [256]
 		output_length = [8]
-		hidden_dim = [200, 500]
+		hidden_dim = [256]
 		batch_size = [256] #, 200]
 		input_length = [300]# , 500]
 		depth = [1, 3]
 		dropout = [0.3, 0.5]
-
 		lr = [0.001] #, 0.0005, 0.001, 0.005]
 		num_epoch = [100] #, 500]
+		pct_train = 0.8
 
-		k_fold = 5
-		best_score = 0
-		best_hyparams = []
-		assert len(self.train_names) == len(self.train_codes), (len(self.train_names), len(self.train_codes))
+		best_f1 = 0
+		best_hyparams = None
+		best_model = None
 		# grid search
-		with open(output_file, 'w') as f:
+		with open(output_folder + '/grid_search_results.txt', 'w') as f:
 			for __, t_output_dim in enumerate(output_dim):
 				for __, t_output_length in enumerate(output_length):
 					for __, t_hidden_dim in enumerate(hidden_dim):
@@ -74,60 +75,54 @@ class trainModel(object):
 									for __, t_dropout in enumerate(dropout):
 										for __, t_lr in enumerate(lr):
 											for __, t_num_epoch in enumerate(num_epoch):
-												t_params = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, lr=t_lr, num_epoch=t_num_epoch)
-												f.write(str(t_params) + '\n')
-												accuracy_sum = 0.0
-												# cross validation
-												id_train_name, id_train_code, id_val_name, id_val_code, naming_data, n_tokens = trainModel.cross_validation_data(self.train_names, self.train_codes, t_output_length, t_input_length, k_fold)
-												assert len(id_train_name) == k_fold, (len(id_train_name), k_fold)
-												for i in range(k_fold):
-													t_train_name = id_train_name[i]
-													t_train_code = id_train_code[i]
-													t_val_name = id_val_name[i]
-													t_val_code = id_val_code[i]
-													t_naming_data = naming_data[i]
-													t_n_tokens = n_tokens[i]
-													print ('k=', i, ', n_tokens=', t_n_tokens)
+												hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout)
+												f.write(str(hyperparams) + '\n')
+												model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+												f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
+												if f1 > best_f1: # use f1 to optimize hyperparams
+													best_f1 = f1
+													best_model = model
+													best_hyparams = hyperparams
+			f.write('the best hyperparam is %s' % str(best_hyparams))
+		print ('the best hyperparam is ', str(best_hyparams))
+		best_model.save(output_folder + '/best_model_' + self.model_name + '.h5')
+		return best_f1, best_hyparams, best_model
 
-													# set hyperparameters
-													if self.model_name == 'SimpleSeq2Seq':
-														self.hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, \
-																			batch_size=t_batch_size, input_length=t_input_length, is_embedding=False, \
-																			n_tokens=t_n_tokens, depth=t_depth,	dropout=t_dropout)
+	def train(self, train_names, train_codes, hyperparams, pct_train=0.8, lr=0.01, num_epoch=100):
+		if self.model_name == 'SimpleSeq2Seq':
+			# split data into  training and validation
+			train_name, train_code, val_name, val_code, naming_data, hyperparams['n_tokens'] = trainModel.split_data(train_names, train_codes, hyperparams['output_length'], hyperparams['input_length'], pct_train)
+			# set hyperparams
+			hyperparams['is_embedding'] = False
+			# convert target name into one-hot encoding
+			train_name = trainModel.one_hot_name(train_name, hyperparams['n_tokens'])
+			# check if required params exist
+			required_params = ['output_dim', 'output_length', 'input_length', 'output_length', 'is_embedding', 'n_tokens']
+			for param in required_params:
+				assert param in hyperparams, (param)
+			# create the model
+			model = SimpleSeq2Seq(**hyperparams)
 
-													t_train_name = trainModel.one_hot_name(t_train_name, t_n_tokens)
+		my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+		model.compile(optimizer=my_adam, loss='categorical_crossentropy')
 
-													t_model = SimpleSeq2Seq(**self.hyperparams)
+		print ('fit...')
+		model.fit(train_code, train_name, epochs=num_epoch)
 
-													t_my_adam = optimizers.Adam(lr=t_lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-													t_model.compile(optimizer=t_my_adam, loss='categorical_crossentropy')
+		print ('predict...')
+		predict_probs = model.predict(val_code)
+		predict_idx = np.argmax(predict_probs, axis=2)
 
-													print ('fit...')
-													t_model.fit(t_train_code, t_train_name, epochs = t_num_epoch)
-
-													print ('predict...')
-													t_predict_probs = t_model.predict(t_val_code)
-
-													t_predict_idx = np.argmax(t_predict_probs, axis=2)
-
-													print('Exact match evaluate...')
-													t_exact_match_accuracy = trainModel.exact_match(t_naming_data, t_predict_idx, t_val_name)
-													f.write('%d, ' % t_exact_match_accuracy)
-													accuracy_sum += t_exact_match_accuracy
-
-												average_accuracy = accuracy_sum/k_fold
-												f.write('\naverage accuracy: %d \n\n' % average_accuracy)
-												if average_accuracy > best_score:
-													best_score = average_accuracy
-													best_hyparams = t_params
-                                                                                                # run model only once
-                                                                                                return best_score, best_hyparams
-		return best_score, best_hyparams
-
-
+		print('evaluate...')
+		exact_match = trainModel.exact_match(naming_data, predict_idx, val_name)
+		precision, recall, f1 = trainModel.evaluate_tokens(naming_data, predict_idx, val_name)
+		return model, exact_match, precision, recall, f1
 
 	@staticmethod
-	def cross_validation_data(train_names, train_codes, output_length, input_length, k_fold=5):
+	def split_data(train_names, train_codes, output_length, input_length, pct_train):
+		assert pct_train > 0, pct_train
+		assert pct_train < 1, pct_train
+		assert len(train_names) == len(train_codes), (len(train_names), len(train_codes))
 
 		id_train_name = []
 		id_train_code = []
@@ -137,51 +132,19 @@ class trainModel(object):
 		n_tokens = []
 
 		n_samples = len(train_names)
-		per_size = int(n_samples/k_fold)
-		print ('per_size: ', per_size)
+		train_size = int(n_samples * pct_train)
 
-		#cross validation
-		for i in range(k_fold - 1):
-			val_name = train_names[i*per_size:(i+1)*per_size]
-			val_code = train_codes[i*per_size:(i+1)*per_size]
-			train_name = np.delete(train_names, range(i*per_size,(i+1)*per_size), 0)
-			train_code = np.delete(train_codes, range(i*per_size,(i+1)*per_size), 0)
-			assert len(train_name) == len(train_code), (len(train_name), len(train_code))
-			assert len(val_name) == len(val_code), (len(val_name), len(val_code))
-			t_naming_data = DataGenerator(train_name, train_code)
-			t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
-			t_id_val_name, t_id_val_code = t_naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
-			t_n_tokens = t_naming_data.all_tokens_dictionary.get_n_tokens()
-
-			print (t_id_train_code)
-			print (t_id_train_name)
-
-			id_train_name.append(t_id_train_name)
-			id_train_code.append(t_id_train_code)
-			id_val_name.append(t_id_val_name)
-			id_val_code.append(t_id_val_code)
-			naming_data.append(t_naming_data)
-			n_tokens.append(t_n_tokens)
-
-		val_name = train_names[(k_fold-1)*per_size:]
-		val_code = train_codes[(k_fold-1)*per_size:]
-		train_name = np.delete(train_names, range(i*per_size,(i+1)*per_size), 0)
-		train_code = np.delete(train_codes, range(i*per_size,(i+1)*per_size), 0)
-
+		train_name = train_names[:train_size]
+		train_code = train_codes[:train_size]
+		val_name = train_names[train_size:]
+		val_code = train_codes[train_size:]
 		assert len(train_name) == len(train_code), (len(train_name), len(train_code))
 		assert len(val_name) == len(val_code), (len(val_name), len(val_code))
 
-		t_naming_data = DataGenerator(train_name, train_code)
-		t_id_train_name, t_id_train_code = t_naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
-		t_id_val_name, t_id_val_code = t_naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
-		t_n_tokens = t_naming_data.all_tokens_dictionary.get_n_tokens()
-
-		id_train_name.append(t_id_train_name)
-		id_train_code.append(t_id_train_code)
-		id_val_name.append(t_id_val_name)
-		id_val_code.append(t_id_val_code)
-		naming_data.append(t_naming_data)
-		n_tokens.append(t_n_tokens)
+		naming_data = DataGenerator(train_name, train_code)
+		id_train_name, id_train_code = naming_data.get_data_for_simple_seq2seq(train_name, train_code, output_length, input_length)
+		id_val_name, id_val_code = naming_data.get_data_for_simple_seq2seq(val_name, val_code, output_length, input_length)
+		n_tokens = naming_data.all_tokens_dictionary.get_n_tokens()
 
 		return id_train_name, id_train_code, id_val_name, id_val_code, naming_data, n_tokens
 
@@ -205,7 +168,7 @@ class trainModel(object):
 			if flag == True:
 				correct_idx.append(predict_idx[i])
 				n_correct += 1
-		print ('n_correct = ', n_correct)
+		print ('n_extact_correct = ', n_correct)
 		print ('n_samples = ', n_samples)
 		print ('correct suggestions:')
 		correct_idx = np.array(correct_idx, dtype=np.object)
@@ -213,6 +176,68 @@ class trainModel(object):
 		for i in range(len(correct_suggestions)):
 			print (str(correct_suggestions[i]))
 		return n_correct/float(n_samples)
+
+	@staticmethod
+	def evaluate_tokens(naming_data, predict_idx, val_name):
+		sum_precision = 0.0
+		sum_recall = 0.0
+		sum_f1 = 0.0
+
+		end_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.NAME_END)
+		start_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.NAME_START)
+		unk_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.get_unk())
+		none_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.get_none())
+
+		print ('end_token: ', end_token)
+		print ('start_token: ', start_token)
+		print ('unk_token: ', unk_token)
+		print ('none_token: ', none_token)
+
+		assert predict_idx.shape == val_name.shape, (predict_idx.shape, val_name.shape)
+
+		n_samples, n_timesteps = predict_idx.shape
+
+		for i in range(n_samples):
+			val_start = 0
+			val_end = 0
+			pre_start = 0
+			pre_end = 0
+			begin = False
+			for j in range(n_timesteps):
+				if begin == False:
+					if val_name[i][j] == start_token:
+						val_start = j+1
+						begin = True
+				else:
+					if val_name[i][j] == end_token:
+						val_end = j
+						break
+
+			begin = False
+			for j in range(n_timesteps):
+				if begin == False:
+					if predict_idx[i][j] == start_token:
+						pre_start = j+1
+						begin = True
+				else:
+					if predict_idx[i][j] == end_token:
+						pre_end = j
+						break
+
+			name = val_name[i][val_start:val_end]
+			pre_name = predict_idx[i][pre_start:pre_end]
+
+			correct_tokens = [v for v in name if v in pre_name]
+			recall = len(correct_tokens) / float(len(name))
+			precision = len(correct_tokens) / float(len(pre_name))
+			f1 = 2 * precision * recall / (precision + recall)
+			sum_precision += precision
+			sum_recall += recall
+			sum_f1 += f1
+		average_precision = sum_precision / float (n_samples)
+		average_recall = sum_recall / float (n_samples)
+		average_f1 = sum_f1 / float (n_samples)
+		return average_precision, average_recall, average_f1
 
 	@staticmethod
 	def show_names(naming_data, predict_idx):
@@ -238,7 +263,10 @@ if __name__ == '__main__':
 	if len(sys.argv) > 3:
 		filepath = sys.argv[1]
 		model_name = sys.argv[2]
-		output_file = sys.argv[3]
+		output_folder = sys.argv[3]
+
+		if not os.path.exists(output_folder):
+			os.mkdir(output_folder)
 
 		names, codes, sentences = DataGenerator.get_input_file(filepath)
 		assert len(names) == len(codes), (len(names), len(codes))
@@ -246,7 +274,7 @@ if __name__ == '__main__':
 		#0.7 for train and val, 0.3 for test
 		train_size = int(0.7 * len(names))
 		idx = np.arange(len(names))
-		# np.random.shuffle(idx)
+		np.random.shuffle(idx)
 
 		train_names = names[idx[:train_size]]
 		train_codes = codes[idx[:train_size]]
@@ -256,4 +284,4 @@ if __name__ == '__main__':
 		print ('the number of training and validation samples: ', len(train_names))
 		print ('the number of testing samples: ', len(test_names))
 		model = trainModel(train_names, train_codes, model_name)
-		model.grid_search(output_file)
+		model.grid_search(output_folder)
