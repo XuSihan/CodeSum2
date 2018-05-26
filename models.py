@@ -7,7 +7,7 @@ import sys
 import keras
 import numpy as np
 from keras import optimizers
-from seq2seq.models import SimpleSeq2Seq
+from seq2seq.models import SimpleSeq2Seq, Seq2Seq
 from generate_datasets import DataGenerator
 
 class trainModel(object):
@@ -60,29 +60,43 @@ class trainModel(object):
 		lr = [0.001] #, 0.0005, 0.001, 0.005]
 		num_epoch = [100] #, 500]
 		pct_train = 0.8
+		peek = [False, True]
+		teacher_force = [True, False]
 
 		best_f1 = 0
 		best_hyparams = None
 		best_model = None
 		# grid search
 		with open(output_folder + '/grid_search_results.txt', 'w') as f:
-			for __, t_output_dim in enumerate(output_dim):
-				for __, t_output_length in enumerate(output_length):
-					for __, t_hidden_dim in enumerate(hidden_dim):
-						for __, t_batch_size in enumerate(batch_size):
-							for __, t_input_length in enumerate(input_length):
-								for __, t_depth in enumerate(depth):
-									for __, t_dropout in enumerate(dropout):
-										for __, t_lr in enumerate(lr):
-											for __, t_num_epoch in enumerate(num_epoch):
-												hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout)
-												f.write(str(hyperparams) + '\n')
-												model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
-												f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
-												if f1 > best_f1: # use f1 to optimize hyperparams
-													best_f1 = f1
-													best_model = model
-													best_hyparams = hyperparams
+			for t_output_dim in output_dim:
+				for t_output_length in output_length:
+					for t_hidden_dim in hidden_dim:
+						for t_batch_size in batch_size:
+							for t_input_length in input_length:
+								for t_depth in depth:
+									for t_dropout in dropout:
+										for t_lr in lr:
+											for t_num_epoch in num_epoch:
+												if self.model_name == 'SimpeSeq2Seq':
+													hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout)
+													f.write(str(hyperparams) + '\n')
+													model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+													f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
+													if f1 > best_f1: # use f1 to optimize hyperparams
+														best_f1 = f1
+														best_model = model
+														best_hyparams = hyperparams
+												elif self.model_name == 'Seq2Seq':
+													for t_peek in peek:
+														for t_teacher_force in teacher_force:
+															hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, peek=t_peek, teacher_force=t_teacher_force)
+															f.write(str(hyperparams) + '\n')
+															model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+															f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
+															if f1 > best_f1: # use f1 to optimize hyperparams
+																best_f1 = f1
+																best_model = model
+																best_hyparams = hyperparams
 			f.write('the best hyperparam is %s' % str(best_hyparams))
 		print ('the best hyperparam is ', str(best_hyparams))
 		best_model.save(output_folder + '/best_model_' + self.model_name + '.h5')
@@ -97,17 +111,36 @@ class trainModel(object):
 			# convert target name into one-hot encoding
 			train_name = trainModel.one_hot_name(train_name, hyperparams['n_tokens'])
 			# check if required params exist
-			required_params = ['output_dim', 'output_length', 'input_length', 'output_length', 'is_embedding', 'n_tokens']
+			required_params = ['output_dim', 'output_length', 'input_length', 'is_embedding', 'n_tokens']
 			for param in required_params:
 				assert param in hyperparams, (param)
 			# create the model
 			model = SimpleSeq2Seq(**hyperparams)
+			my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+			model.compile(optimizer=my_adam, loss='categorical_crossentropy')
+			print ('fit...')
+			model.fit(train_code, train_name, epochs=num_epoch)
 
-		my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-		model.compile(optimizer=my_adam, loss='categorical_crossentropy')
-
-		print ('fit...')
-		model.fit(train_code, train_name, epochs=num_epoch)
+			
+		if self.model_name == 'Seq2Seq':
+			train_name, train_code, val_name, val_code, naming_data, hyperparams['n_tokens'] = trainModel.split_data(train_names, train_codes, hyperparams['output_length'], hyperparams['input_length'], pct_train)
+			hyperparams['is_embedding'] = False
+			train_name = trainModel.one_hot_name(train_name, hyperparams['n_tokens'])
+			# check if required params exist
+			required_params = ['output_dim', 'output_length', 'input_length', 'is_embedding', 'n_tokens']
+			for param in required_params:
+				assert param in hyperparams, (param)
+			# create the model
+			model = Seq2Seq(**hyperparams)
+			my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+			model.compile(optimizer=my_adam, loss='categorical_crossentropy')
+			if 'teacher_force' in hyperparams and hyperparams['teacher_force'] == True:
+				hyperparams['unroll'] = True
+				inputs = [train_code, train_name]
+			else:
+				inputs = train_code
+			inputs = [train_code, train_name]
+			model.fit(inputs, train_name, epochs=num_epoch)
 
 		print ('predict...')
 		predict_probs = model.predict(val_code)
