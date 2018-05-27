@@ -117,7 +117,8 @@ class DataGenerator(object):
 		for i, name in enumerate(names):
 			t_name = []
 			t_codes = []
-			
+			assert len(name) > 2, (len(name))
+			assert len(codes[i]) > 2, (len(codes[i]))
 			for j in range(len(name)):
 				t_name.append(self.all_tokens_dictionary.get_id_or_unk(name[j]))
 			

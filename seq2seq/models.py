@@ -185,9 +185,9 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
         i = Input(shape=(input_length,), name='sentence_input', dtype='int32')
         if embedding_dim is None:
             embedding_dim = hidden_dim
-        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length)(i)
+        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length, trainable=False)(i)
         shape = (batch_size,) + (input_length,) + (embedding_dim,)
-	_input._keras_history[0].supports_masking = True
+	# _input._keras_history[0].supports_masking = True
     
 
     encoder = RecurrentSequential(readout=True, state_sync=inner_broadcast_state,
@@ -228,7 +228,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
 
     if teacher_force:
         truth_tensor = Input(batch_shape=(shape[0], output_length, n_tokens))
-        truth_tensor._keras_history[0].supports_masking = True
+        # truth_tensor._keras_history[0].supports_masking = True
         inputs += [truth_tensor]
 
 

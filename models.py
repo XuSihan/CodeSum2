@@ -57,11 +57,11 @@ class trainModel(object):
 		input_length = [300]# , 500]
 		depth = [1, 3]
 		dropout = [0.3, 0.5]
-		lr = [0.001] #, 0.0005, 0.001, 0.005]
-		num_epoch = [100] #, 500]
-		pct_train = 0.8
+		lr = [0.001, 0.0005] #, 0.0005, 0.001, 0.005]
+		num_epoch = [20, 50] #, 500]
+		pct_train = 0.9
 		peek = [False, True]
-		teacher_force = [True, False]
+		teacher_force = [False]
 
 		best_f1 = 0
 		best_hyparams = None
@@ -139,7 +139,6 @@ class trainModel(object):
 				inputs = [train_code, train_name]
 			else:
 				inputs = train_code
-			inputs = [train_code, train_name]
 			model.fit(inputs, train_name, epochs=num_epoch)
 
 		print ('predict...')
@@ -206,8 +205,9 @@ class trainModel(object):
 		print ('correct suggestions:')
 		correct_idx = np.array(correct_idx, dtype=np.object)
 		correct_suggestions = trainModel.show_names(naming_data, correct_idx)
-		for i in range(len(correct_suggestions)):
-			print (str(correct_suggestions[i]))
+		if not correct_suggestions == None:
+			for i in range(len(correct_suggestions)):
+				print (str(correct_suggestions[i]))
 		return n_correct/float(n_samples)
 
 	@staticmethod
@@ -274,16 +274,20 @@ class trainModel(object):
 
 	@staticmethod
 	def show_names(naming_data, predict_idx):
-		n_samples, n_timesteps = predict_idx.shape
-		predict_names = []
-		for i in range(n_samples):
-			name = []
-			for j in range(n_timesteps):
-				name.append(naming_data.all_tokens_dictionary.get_name_for_id(predict_idx[i][j]))
-			predict_names.append(name)
-		predict_names = np.array(predict_names, dtype=np.object)
-		assert predict_names.shape == predict_idx.shape, (predict_names.shape, predict_idx.shape)
-		return predict_names
+		if len(predict_idx) == 0:
+			print ('nothing correct')
+			return None
+		else:
+			n_samples, n_timesteps = predict_idx.shape
+			predict_names = []
+			for i in range(n_samples):
+				name = []
+				for j in range(n_timesteps):
+					name.append(naming_data.all_tokens_dictionary.get_name_for_id(predict_idx[i][j]))
+				predict_names.append(name)
+			predict_names = np.array(predict_names, dtype=np.object)
+			assert predict_names.shape == predict_idx.shape, (predict_names.shape, predict_idx.shape)
+			return predict_names
 
 if __name__ == '__main__':
 
