@@ -7,7 +7,7 @@ import sys
 import keras
 import numpy as np
 from keras import optimizers
-from seq2seq.models import SimpleSeq2Seq, Seq2Seq
+from seq2seq.models import SimpleSeq2Seq, Seq2Seq, AttentionSeq2Seq
 from generate_datasets import DataGenerator
 
 class trainModel(object):
@@ -53,7 +53,7 @@ class trainModel(object):
 		output_dim = [256]
 		output_length = [8]
 		hidden_dim = [256]
-		batch_size = [256] #, 200]
+		batch_size = [500] #, 200]
 		input_length = [300]# , 500]
 		depth = [1, 3]
 		dropout = [0.3, 0.5]
@@ -62,12 +62,12 @@ class trainModel(object):
 		pct_train = 0.9
 		peek = [False, True]
 		teacher_force = [False]
-
+		bidirectional = [False]
 		best_f1 = 0
 		best_hyparams = None
 		best_model = None
 		# grid search
-		with open(output_folder + '/grid_search_results.txt', 'w') as f:
+		with open(output_folder + '/' + self.model_name + '_grid_search.txt', 'w') as f:
 			for t_output_dim in output_dim:
 				for t_output_length in output_length:
 					for t_hidden_dim in hidden_dim:
@@ -77,7 +77,7 @@ class trainModel(object):
 									for t_dropout in dropout:
 										for t_lr in lr:
 											for t_num_epoch in num_epoch:
-												if self.model_name == 'SimpeSeq2Seq':
+												if self.model_name == 'SimpleSeq2Seq':
 													hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout)
 													f.write(str(hyperparams) + '\n')
 													model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
@@ -97,13 +97,23 @@ class trainModel(object):
 																best_f1 = f1
 																best_model = model
 																best_hyparams = hyperparams
+												elif self.model_name == 'AttentionSeq2Seq':
+													for t_bidirectional in bidirectional:
+														hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, bidirectional=t_bidirectional)
+														f.write(str(hyperparams) + '\n')
+														model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+														f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
+														if f1 > best_f1: # use f1 to optimize hyperparams
+															best_f1 = f1
+															best_model = model
+															best_hyparams = hyperparams		
 			f.write('the best hyperparam is %s' % str(best_hyparams))
 		print ('the best hyperparam is ', str(best_hyparams))
-		best_model.save(output_folder + '/best_model_' + self.model_name + '.h5')
+		best_model.save(output_folder + '/best_' + self.model_name + '.h5')
 		return best_f1, best_hyparams, best_model
 
 	def train(self, train_names, train_codes, hyperparams, pct_train=0.8, lr=0.01, num_epoch=100):
-		if self.model_name == 'SimpleSeq2Seq':
+		if self.model_name == 'SimpleSeq2Seq' or self.model_name == 'AttentionSeq2Seq':
 			# split data into  training and validation
 			train_name, train_code, val_name, val_code, naming_data, hyperparams['n_tokens'] = trainModel.split_data(train_names, train_codes, hyperparams['output_length'], hyperparams['input_length'], pct_train)
 			# set hyperparams
@@ -115,7 +125,10 @@ class trainModel(object):
 			for param in required_params:
 				assert param in hyperparams, (param)
 			# create the model
-			model = SimpleSeq2Seq(**hyperparams)
+			if self.model_name == 'SimpleSeq2Seq':
+				model = SimpleSeq2Seq(**hyperparams)
+			elif self.model_name == 'AttentionSeq2Seq':
+				model = AttentionSeq2Seq(**hyperparams)
 			my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
 			model.compile(optimizer=my_adam, loss='categorical_crossentropy')
 			print ('fit...')
@@ -218,8 +231,8 @@ class trainModel(object):
 
 		end_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.NAME_END)
 		start_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.NAME_START)
-		unk_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.get_unk())
-		none_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.get_none())
+		unk_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.all_tokens_dictionary.get_unk())
+		none_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.all_tokens_dictionary.get_none())
 
 		print ('end_token: ', end_token)
 		print ('start_token: ', start_token)
