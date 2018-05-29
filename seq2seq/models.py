@@ -15,7 +15,7 @@ Papers:
 
 def SimpleSeq2Seq(output_dim, output_length, hidden_dim=None, input_shape=None,
                   batch_size=None, batch_input_shape=None, input_dim=None,
-                  input_length=None, is_embedding=True, embedding_dim=None, 
+                  input_length=None, is_embedding=True, embedding_dim=None,
                   n_tokens=None, depth=1, dropout=0.0, unroll=False,
                   stateful=False):
 
@@ -56,11 +56,11 @@ def SimpleSeq2Seq(output_dim, output_length, hidden_dim=None, input_shape=None,
         if is_embedding == False and n_tokens > 0:
             pass
         else:
-            raise TypeError            
+            raise TypeError
 
     if hidden_dim is None:
         hidden_dim = output_dim
-    
+
     if is_embedding:
         _input = Input(batch_shape=shape)
     else:
@@ -88,8 +88,8 @@ def SimpleSeq2Seq(output_dim, output_length, hidden_dim=None, input_shape=None,
         for _ in range(depth[1] - 2):
             decoder.add(Dropout(dropout))
             decoder.add(LSTMCell(hidden_dim))
-    decoder.add(Dropout(dropout))
-    decoder.add(LSTMCell(output_dim))
+        decoder.add(Dropout(dropout))
+        decoder.add(LSTMCell(output_dim))
 
     x = encoder(_input)
     decoder_outputs = decoder(x)
@@ -100,7 +100,7 @@ def SimpleSeq2Seq(output_dim, output_length, hidden_dim=None, input_shape=None,
         return Model(i,output)
 
 def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
-            input_shape=None, batch_size=None, input_dim=None, input_length=None, 
+            input_shape=None, batch_size=None, input_dim=None, input_length=None,
             is_embedding=True, embedding_dim=None, n_tokens=None,
             depth=1, broadcast_state=True, unroll=False,
             stateful=False, inner_broadcast_state=True, teacher_force=False,
@@ -160,7 +160,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
 
     if isinstance(depth, int):
         depth = (depth, depth)
-        
+
     if batch_input_shape:
         shape = batch_input_shape
     elif input_shape:
@@ -174,74 +174,63 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
         if is_embedding == False and n_tokens > 0:
             pass
         else:
-            raise TypeError            
+            raise TypeError
 
     if hidden_dim is None:
         hidden_dim = output_dim
-    
+
     if is_embedding:
         _input = Input(batch_shape=shape)
     else:
         i = Input(shape=(input_length,), name='sentence_input', dtype='int32')
         if embedding_dim is None:
             embedding_dim = hidden_dim
-        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length, trainable=False)(i)
+        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length)(i)
         shape = (batch_size,) + (input_length,) + (embedding_dim,)
 	# _input._keras_history[0].supports_masking = True
-    
+
 
     encoder = RecurrentSequential(readout=True, state_sync=inner_broadcast_state,
                                   unroll=unroll, stateful=stateful,
                                   return_states=broadcast_state)
-    for _ in range(depth[0]):
-        encoder.add(LSTMCell(hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+    encoder.add(LSTMCell(hidden_dim, batch_input_shape=(shape[0], shape[-1])))
+    for _ in range(1, depth[0]):
         encoder.add(Dropout(dropout))
+        encoder.add(LSTMCell(hidden_dim))
 
-    dense1 = TimeDistributed(Dense(hidden_dim))
     # dense1.supports_masking = True
-    dense2 = Dense(output_dim)
+    # dense2 = Dense(output_dim)
 
     decoder = RecurrentSequential(readout='add' if peek else 'readout_only',
                                   state_sync=inner_broadcast_state, decode=True,
                                   output_length=output_length, unroll=unroll,
                                   stateful=stateful, teacher_force=teacher_force)
+    decoder.add(Dropout(dropout, batch_input_shape=(shape[0], hidden_dim)))
+    if depth[1] == 1:
+        decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+    else:
+        decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        for _ in range(depth[1]-2):
+            decoder.add(Dropout(dropout))
+            decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        decoder.add(Dropout(dropout))
+        decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
 
-    for _ in range(depth[1]):
-        decoder.add(Dropout(dropout, batch_input_shape=(shape[0], output_dim)))
-        decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim,
-                                    batch_input_shape=(shape[0], output_dim)))
-
-    encoded_seq = dense1(_input)
-    encoded_seq = encoder(encoded_seq)
+    x = encoder(_input)
     if broadcast_state:
-        assert type(encoded_seq) is list
-        states = encoded_seq[-2:]
-        encoded_seq = encoded_seq[0]
+        assert type(x) is list
+        states = x[-2:]
+        x = x[0]
     else:
         states = None
-    encoded_seq = dense2(encoded_seq)
 
-    if is_embedding:
-        inputs = [_input]
-    else:
-        inputs = [i]
-
-    if teacher_force:
-        truth_tensor = Input(batch_shape=(shape[0], output_length, n_tokens))
-        # truth_tensor._keras_history[0].supports_masking = True
-        inputs += [truth_tensor]
-
-
-    decoder_outputs = decoder(encoded_seq,
-                          ground_truth=inputs[1] if teacher_force else None,
-                          initial_readout=encoded_seq, initial_state=states)
-    
+    decoder_outputs = decoder(x, ground_truth=None, initial_readout=x, initial_state=states)
     output = TimeDistributed(Dense(n_tokens, activation='softmax'))(decoder_outputs)
 
-    model = Model(inputs, output)
-    model.encoder = encoder
-    model.decoder = decoder
-    return model
+    if is_embedding:
+        return Model(_input, output)
+    else:
+        return Model(i, output)
 
 def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
                      batch_size=None, input_shape=None, input_length=None,
@@ -290,11 +279,11 @@ def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
         if is_embedding == False and n_tokens > 0:
             pass
         else:
-            raise TypeError            
+            raise TypeError
 
     if hidden_dim is None:
         hidden_dim = output_dim
-    
+
     if is_embedding:
         _input = Input(batch_shape=shape)
     else:
