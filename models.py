@@ -21,6 +21,10 @@ class trainModel(object):
 		self.parameters = None # if the model has been trained, parameters will not be None.
 		self.naming_data = None # the dictionary to decode/encode tokens
 
+		self.output_folder = self.model_name + 'Results'
+		if not os.path.exists(self.output_folder):
+			os.mkdir(self.output_folder)
+
 		# self._check_all_hyperparmeters_exist()
 		# for seq2seq models
 		# self.n_tokens = self.naming_data.all_tokens_dictionary.get_n_tokens()
@@ -47,7 +51,7 @@ class trainModel(object):
 				X[i, j, token] = 1.0
 		return X
 
-	def grid_search(self, output_folder):
+	def grid_search(self):
 		assert len(self.train_names) == len(self.train_codes), (len(self.train_names), len(self.train_codes))
 
 		output_dim = [256]
@@ -67,7 +71,7 @@ class trainModel(object):
 		best_hyparams = None
 		best_model = None
 		# grid search
-		with open(output_folder + '/' + self.model_name + '_grid_search.txt', 'w') as f:
+		with open(self.output_folder + '/' + 'grid_search.txt', 'w') as f:
 			for t_output_dim in output_dim:
 				for t_output_length in output_length:
 					for t_hidden_dim in hidden_dim:
@@ -109,7 +113,7 @@ class trainModel(object):
 															best_hyparams = hyperparams		
 			f.write('the best hyperparam is %s' % str(best_hyparams))
 		print ('the best hyperparam is ', str(best_hyparams))
-		best_model.save(output_folder + '/best_' + self.model_name + '.h5')
+		best_model.save(self.output_folder + '/best_' + self.model_name + '.h5')
 		return best_f1, best_hyparams, best_model
 
 	def train(self, train_names, train_codes, hyperparams, pct_train=0.8, lr=0.01, num_epoch=100):
@@ -218,9 +222,8 @@ class trainModel(object):
 		print ('correct suggestions:')
 		correct_idx = np.array(correct_idx, dtype=np.object)
 		correct_suggestions = trainModel.show_names(naming_data, correct_idx)
-		if not correct_suggestions == None:
-			for i in range(len(correct_suggestions)):
-				print (str(correct_suggestions[i]))
+		for i in range(len(correct_suggestions)):
+			print (str(correct_suggestions[i]))
 		return n_correct/float(n_samples)
 
 	@staticmethod
@@ -287,12 +290,12 @@ class trainModel(object):
 
 	@staticmethod
 	def show_names(naming_data, predict_idx):
+		predict_names = []
 		if len(predict_idx) == 0:
 			print ('nothing correct')
-			return None
+			return predict_names
 		else:
 			n_samples, n_timesteps = predict_idx.shape
-			predict_names = []
 			for i in range(n_samples):
 				name = []
 				for j in range(n_timesteps):
@@ -310,13 +313,10 @@ if __name__ == '__main__':
 	sess = tf.Session(config=config)
 	KTF.set_session(sess)
 
-	if len(sys.argv) > 3:
+	if len(sys.argv) > 2:
 		filepath = sys.argv[1]
 		model_name = sys.argv[2]
-		output_folder = sys.argv[3]
 
-		if not os.path.exists(output_folder):
-			os.mkdir(output_folder)
 
 		names, codes, sentences = DataGenerator.get_input_file(filepath)
 		assert len(names) == len(codes), (len(names), len(codes))
@@ -334,4 +334,4 @@ if __name__ == '__main__':
 		print ('the number of training and validation samples: ', len(train_names))
 		print ('the number of testing samples: ', len(test_names))
 		model = trainModel(train_names, train_codes, model_name)
-		model.grid_search(output_folder)
+		model.grid_search()

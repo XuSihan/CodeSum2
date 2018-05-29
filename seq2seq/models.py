@@ -198,7 +198,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
         encoder.add(Dropout(dropout))
 
     dense1 = TimeDistributed(Dense(hidden_dim))
-    dense1.supports_masking = True
+    # dense1.supports_masking = True
     dense2 = Dense(output_dim)
 
     decoder = RecurrentSequential(readout='add' if peek else 'readout_only',
@@ -245,6 +245,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
 
 def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
                      batch_size=None, input_shape=None, input_length=None,
+                     is_embedding=True, embedding_dim=None, n_tokens=None,
                      input_dim=None, hidden_dim=None, depth=1,
                      bidirectional=True, unroll=False, stateful=False, dropout=0.0,):
     '''
@@ -275,6 +276,7 @@ def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
 
     if isinstance(depth, int):
         depth = (depth, depth)
+
     if batch_input_shape:
         shape = batch_input_shape
     elif input_shape:
@@ -284,14 +286,24 @@ def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
             shape = (batch_size,) + (input_length,) + (input_dim,)
         else:
             shape = (batch_size,) + (None,) + (input_dim,)
-    else:
-        # TODO Proper error message
-        raise TypeError
+    elif input_length:
+        if is_embedding == False and n_tokens > 0:
+            pass
+        else:
+            raise TypeError            
+
     if hidden_dim is None:
         hidden_dim = output_dim
-
-    _input = Input(batch_shape=shape)
-    _input._keras_history[0].supports_masking = True
+    
+    if is_embedding:
+        _input = Input(batch_shape=shape)
+    else:
+        i = Input(shape=(input_length,), name='sentence_input', dtype='int32')
+        if embedding_dim is None:
+            embedding_dim = hidden_dim
+        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length, trainable=False)(i)
+        shape = (batch_size,) + (input_length,) + (embedding_dim,)
+	# _input._keras_history[0].supports_masking = True
 
     encoder = RecurrentSequential(unroll=unroll, stateful=stateful,
                                   return_sequences=True)
@@ -321,8 +333,12 @@ def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
             decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim))
         decoder.add(Dropout(dropout))
         decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim))
-    
-    inputs = [_input]
+
+    if is_embedding:
+        inputs = _input
+    else:
+        inputs = i
     decoded = decoder(encoded)
-    model = Model(inputs, decoded)
+    output = TimeDistributed(Dense(n_tokens, activation='softmax'))(decoded)
+    model = Model(inputs, output)
     return model
