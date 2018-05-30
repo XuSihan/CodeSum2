@@ -237,11 +237,6 @@ class trainModel(object):
 		unk_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.all_tokens_dictionary.get_unk())
 		none_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.all_tokens_dictionary.get_none())
 
-		print ('end_token: ', end_token)
-		print ('start_token: ', start_token)
-		print ('unk_token: ', unk_token)
-		print ('none_token: ', none_token)
-
 		assert predict_idx.shape == val_name.shape, (predict_idx.shape, val_name.shape)
 
 		n_samples, n_timesteps = predict_idx.shape
@@ -277,12 +272,27 @@ class trainModel(object):
 			pre_name = predict_idx[i][pre_start:pre_end]
 
 			correct_tokens = [v for v in name if v in pre_name]
-			recall = len(correct_tokens) / float(len(name))
-			precision = len(correct_tokens) / float(len(pre_name))
-			f1 = 2 * precision * recall / (precision + recall)
+
+			if len(name) > 0:
+				recall = len(correct_tokens) / float(len(name))
+			else:
+				recall = 0.0
+
+			if len(pre_name) > 0:
+				precision = len(correct_tokens) / float(len(pre_name))
+			else:
+				precision = 0.0
+
+			if (precision + recall) > 0:
+				f1 = 2 * precision * recall / (precision + recall)
+			else:
+				f1 = 0.0
+
 			sum_precision += precision
 			sum_recall += recall
 			sum_f1 += f1
+
+		assert n_samples > 0, (n_samples)
 		average_precision = sum_precision / float (n_samples)
 		average_recall = sum_recall / float (n_samples)
 		average_f1 = sum_f1 / float (n_samples)
