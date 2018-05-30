@@ -62,10 +62,10 @@ class trainModel(object):
 		depth = [1, 3]
 		dropout = [0.3, 0.5]
 		lr = [0.001, 0.0005] #, 0.0005, 0.001, 0.005]
-		num_epoch = [20, 50] #, 500]
+		num_epoch = [50, 50] #, 500]
 		pct_train = 0.9
 		peek = [False, True]
-		teacher_force = [False]
+		broadcast_state = [True]
 		bidirectional = [False]
 		best_f1 = 0
 		best_hyparams = None
@@ -92,8 +92,8 @@ class trainModel(object):
 														best_hyparams = hyperparams
 												elif self.model_name == 'Seq2Seq':
 													for t_peek in peek:
-														for t_teacher_force in teacher_force:
-															hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, peek=t_peek, teacher_force=t_teacher_force)
+														for t_broadcast_state in broadcast_state:
+															hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, peek=t_peek, broadcast_state=t_broadcast_state)
 															f.write(str(hyperparams) + '\n')
 															model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
 															f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
@@ -234,8 +234,6 @@ class trainModel(object):
 
 		end_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.NAME_END)
 		start_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.NAME_START)
-		unk_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.all_tokens_dictionary.get_unk())
-		none_token = naming_data.all_tokens_dictionary.get_id_or_unk(naming_data.all_tokens_dictionary.get_none())
 
 		assert predict_idx.shape == val_name.shape, (predict_idx.shape, val_name.shape)
 

@@ -103,7 +103,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
             input_shape=None, batch_size=None, input_dim=None, input_length=None,
             is_embedding=True, embedding_dim=None, n_tokens=None,
             depth=1, broadcast_state=True, unroll=False,
-            stateful=False, inner_broadcast_state=True, teacher_force=False,
+            stateful=False, inner_broadcast_state=False, teacher_force=False,
             peek=False, dropout=0.):
 
     '''
@@ -187,7 +187,6 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
             embedding_dim = hidden_dim
         _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length)(i)
         shape = (batch_size,) + (input_length,) + (embedding_dim,)
-	# _input._keras_history[0].supports_masking = True
 
 
     encoder = RecurrentSequential(readout=True, state_sync=inner_broadcast_state,
@@ -198,23 +197,25 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
         encoder.add(Dropout(dropout))
         encoder.add(LSTMCell(hidden_dim))
 
-    # dense1.supports_masking = True
     # dense2 = Dense(output_dim)
 
-    decoder = RecurrentSequential(readout='add' if peek else 'readout_only',
-                                  state_sync=inner_broadcast_state, decode=True,
+    decoder = RecurrentSequential(readout='add' if peek else 'readout_only', decode=True,
                                   output_length=output_length, unroll=unroll,
                                   stateful=stateful, teacher_force=teacher_force)
     decoder.add(Dropout(dropout, batch_input_shape=(shape[0], hidden_dim)))
     if depth[1] == 1:
-        decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        #decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        decoder.add(LSTMCell(output_dim=output_dim))
     else:
-        decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        #decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        decoder.add(LSTMCell(output_dim=hidden_dim))
         for _ in range(depth[1]-2):
             decoder.add(Dropout(dropout))
-            decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+            #decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+            decoder.add(LSTMCell(output_dim=hidden_dim))
         decoder.add(Dropout(dropout))
-        decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        #decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
+        decoder.add(LSTMCell(output_dim=output_dim))
 
     x = encoder(_input)
     if broadcast_state:
@@ -223,8 +224,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
         x = x[0]
     else:
         states = None
-
-    decoder_outputs = decoder(x, ground_truth=None, initial_readout=x, initial_state=states)
+    decoder_outputs = decoder(x, initial_state=states)
     output = TimeDistributed(Dense(n_tokens, activation='softmax'))(decoder_outputs)
 
     if is_embedding:
