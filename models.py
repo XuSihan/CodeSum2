@@ -1,5 +1,6 @@
 from __future__ import print_function
 import os
+import pickle
 import tensorflow as tf
 import keras.backend.tensorflow_backend as KTF
 
@@ -14,6 +15,7 @@ class trainModel(object):
 	def __init__(self, train_names, train_codes, model_name, hyperparams=None):
 		self.train_names = train_names
 		self.train_codes = train_codes
+
 		self.hyperparams = hyperparams
 		self.model_name = model_name
 
@@ -59,17 +61,15 @@ class trainModel(object):
 		hidden_dim = [256]
 		batch_size = [500] #, 200]
 		input_length = [300]# , 500]
-		depth = [1, 3]
-		dropout = [0.3, 0.5]
-		lr = [0.001, 0.0005] #, 0.0005, 0.001, 0.005]
-		num_epoch = [50, 50] #, 500]
+		depth = [1]
+		dropout = [0.3]
+		lr = [0.001] #, 0.0005, 0.001, 0.005]
+		num_epoch = [1] #, 500]
 		pct_train = 0.9
-		peek = [False, True]
+		peek = [True]
 		broadcast_state = [True]
 		bidirectional = [False]
 		best_f1 = 0
-		best_hyparams = None
-		best_model = None
 		# grid search
 		with open(self.output_folder + '/' + 'grid_search.txt', 'w') as f:
 			for t_output_dim in output_dim:
@@ -84,37 +84,49 @@ class trainModel(object):
 												if self.model_name == 'SimpleSeq2Seq':
 													hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout)
 													f.write(str(hyperparams) + '\n')
-													model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+													f.flush()
+													model, exact_match, precision, recall, f1, naming_data = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
 													f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
+													f.flush()
 													if f1 > best_f1: # use f1 to optimize hyperparams
 														best_f1 = f1
-														best_model = model
-														best_hyparams = hyperparams
+														self.model = model
+														self.hyperparams = hyperparams
+														self.naming_data = naming_data
 												elif self.model_name == 'Seq2Seq':
 													for t_peek in peek:
 														for t_broadcast_state in broadcast_state:
 															hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, peek=t_peek, broadcast_state=t_broadcast_state)
 															f.write(str(hyperparams) + '\n')
-															model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+															f.flush()
+															model, exact_match, precision, recall, f1, naming_data = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+															f.flush()
 															f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
+															f.flush()
 															if f1 > best_f1: # use f1 to optimize hyperparams
 																best_f1 = f1
-																best_model = model
-																best_hyparams = hyperparams
+																self.model = model
+																self.hyperparams = hyperparams
+																self.naming_data = naming_data
 												elif self.model_name == 'AttentionSeq2Seq':
 													for t_bidirectional in bidirectional:
 														hyperparams = dict(output_dim=t_output_dim, output_length=t_output_length, hidden_dim=t_hidden_dim, batch_size=t_batch_size, input_length=t_input_length, depth=t_depth, dropout=t_dropout, bidirectional=t_bidirectional)
 														f.write(str(hyperparams) + '\n')
-														model, exact_match, precision, recall, f1 = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
+														f.flush()
+														model, exact_match, precision, recall, f1, naming_data = self.train(self.train_names, self.train_codes, hyperparams, pct_train, t_lr, t_num_epoch)
 														f.write('exact match=%f, precision=%f, recall=%f, f1=%f\n\n' % (exact_match, precision, recall, f1))
+														f.flush()
 														if f1 > best_f1: # use f1 to optimize hyperparams
 															best_f1 = f1
-															best_model = model
-															best_hyparams = hyperparams		
-			f.write('the best hyperparam is %s' % str(best_hyparams))
-		print ('the best hyperparam is ', str(best_hyparams))
-		best_model.save(self.output_folder + '/best_' + self.model_name + '.h5')
-		return best_f1, best_hyparams, best_model
+															self.model = model
+															self.hyperparams = hyperparams	
+															self.naming_data = naming_data
+			# best params
+			f.write('the best hyperparam is %s' % str(self.hyperparams))
+			f.flush()
+			print ('the best hyperparam is ', str(self.hyperparams))
+			# best model
+			self.model.save(self.output_folder + '/best_' + self.model_name + '.h5')
 
 	def train(self, train_names, train_codes, hyperparams, pct_train=0.8, lr=0.01, num_epoch=100):
 		if self.model_name == 'SimpleSeq2Seq' or self.model_name == 'AttentionSeq2Seq':
@@ -151,12 +163,7 @@ class trainModel(object):
 			model = Seq2Seq(**hyperparams)
 			my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
 			model.compile(optimizer=my_adam, loss='categorical_crossentropy')
-			if 'teacher_force' in hyperparams and hyperparams['teacher_force'] == True:
-				hyperparams['unroll'] = True
-				inputs = [train_code, train_name]
-			else:
-				inputs = train_code
-			model.fit(inputs, train_name, epochs=num_epoch)
+			model.fit(train_code, train_name, epochs=num_epoch)
 
 		print ('predict...')
 		predict_probs = model.predict(val_code)
@@ -165,7 +172,7 @@ class trainModel(object):
 		print('evaluate...')
 		exact_match = trainModel.exact_match(naming_data, predict_idx, val_name)
 		precision, recall, f1 = trainModel.evaluate_tokens(naming_data, predict_idx, val_name)
-		return model, exact_match, precision, recall, f1
+		return model, exact_match, precision, recall, f1, naming_data
 
 	@staticmethod
 	def split_data(train_names, train_codes, output_length, input_length, pct_train):
@@ -313,6 +320,15 @@ class trainModel(object):
 			assert predict_names.shape == predict_idx.shape, (predict_names.shape, predict_idx.shape)
 			return predict_names
 
+	@staticmethod
+	def test(model, test_names, test_codes):
+		id_test_name, id_test_code = model.naming_data.get_data_for_simple_seq2seq(test_names, test_codes, model.hyperparams['output_length'], model.hyperparams['input_length'])
+		predict_probs = model.model.predict(id_test_code)
+		predict_idx = np.argmax(predict_probs, axis=2)
+		exact_match = trainModel.exact_match(model.naming_data, predict_idx, id_test_name)
+		precision, recall, f1 = trainModel.evaluate_tokens(model.naming_data, predict_idx, id_test_name)
+		return exact_match, precision, recall, f1
+
 if __name__ == '__main__':
 
 	os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -341,5 +357,14 @@ if __name__ == '__main__':
 
 		print ('the number of training and validation samples: ', len(train_names))
 		print ('the number of testing samples: ', len(test_names))
-		model = trainModel(train_names, train_codes, model_name)
-		model.grid_search()
+		train_model = trainModel(train_names, train_codes, model_name)
+		train_model.grid_search()
+
+		pickle.dump(train_model, train_model.output_folder+'/best_'+model_name)
+		# test
+		print ('test in ', len(test_names), ':')
+		exact_match, precision, recall, f1 = trainModel.test(train_model, test_names, test_codes)
+		print ('exact match = ', exact_match)
+		print ('precision = ', precision)
+		print ('recall = ', recall)
+		print ('f1 = ', f1)

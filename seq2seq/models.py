@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from recurrentshop import LSTMCell, RecurrentSequential
 from .cells import LSTMDecoderCell, AttentionDecoderCell
 from keras.models import Sequential, Model
-from keras.layers import Dense, Dropout, TimeDistributed, Bidirectional, Input, Embedding
-
+from keras.layers import Dense, Dropout, TimeDistributed, Bidirectional, Input, Embedding, Lambda
+import tensorflow as tf
 
 '''
 Papers:
@@ -99,11 +99,11 @@ def SimpleSeq2Seq(output_dim, output_length, hidden_dim=None, input_shape=None,
     else:
         return Model(i,output)
 
-def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
+def Seq2Seq(output_dim, output_length=None, hidden_dim=None, batch_input_shape=None,
             input_shape=None, batch_size=None, input_dim=None, input_length=None,
             is_embedding=True, embedding_dim=None, n_tokens=None,
             depth=1, broadcast_state=True, unroll=False,
-            stateful=False, inner_broadcast_state=False, teacher_force=False,
+            stateful=False, inner_broadcast_state=False,
             peek=False, dropout=0.):
 
     '''
@@ -201,7 +201,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
 
     decoder = RecurrentSequential(readout='add' if peek else 'readout_only', decode=True,
                                   output_length=output_length, unroll=unroll,
-                                  stateful=stateful, teacher_force=teacher_force)
+                                  stateful=stateful)
     decoder.add(Dropout(dropout, batch_input_shape=(shape[0], hidden_dim)))
     if depth[1] == 1:
         #decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim, batch_input_shape=(shape[0], hidden_dim)))
@@ -224,6 +224,7 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
         x = x[0]
     else:
         states = None
+
     decoder_outputs = decoder(x, initial_state=states)
     output = TimeDistributed(Dense(n_tokens, activation='softmax'))(decoder_outputs)
 
