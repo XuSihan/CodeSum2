@@ -27,11 +27,6 @@ class trainModel(object):
 		if not os.path.exists(self.output_folder):
 			os.mkdir(self.output_folder)
 
-		# self._check_all_hyperparmeters_exist()
-		# for seq2seq models
-		# self.n_tokens = self.naming_data.all_tokens_dictionary.get_n_tokens()
-
-
 	def _check_all_hyperparmeters_exist(self):
 		if self.model_name == 'SimpleSeq2Seq':
 			'''
@@ -59,12 +54,12 @@ class trainModel(object):
 		output_dim = [256]
 		output_length = [8]
 		hidden_dim = [256]
-		batch_size = [500] #, 200]
-		input_length = [300]# , 500]
+		batch_size = [500]
+		input_length = [300]
 		depth = [1]
 		dropout = [0.3]
-		lr = [0.001] #, 0.0005, 0.001, 0.005]
-		num_epoch = [1] #, 500]
+		lr = [0.001]
+		num_epoch = [1, 50, 100]
 		pct_train = 0.9
 		peek = [True]
 		broadcast_state = [True]
@@ -119,7 +114,7 @@ class trainModel(object):
 														if f1 > best_f1: # use f1 to optimize hyperparams
 															best_f1 = f1
 															self.model = model
-															self.hyperparams = hyperparams	
+															self.hyperparams = hyperparams
 															self.naming_data = naming_data
 			# best params
 			f.write('the best hyperparam is %s' % str(self.hyperparams))
@@ -145,12 +140,14 @@ class trainModel(object):
 				model = SimpleSeq2Seq(**hyperparams)
 			elif self.model_name == 'AttentionSeq2Seq':
 				model = AttentionSeq2Seq(**hyperparams)
+                        else:
+                            raise TypeError
 			my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
 			model.compile(optimizer=my_adam, loss='categorical_crossentropy')
 			print ('fit...')
 			model.fit(train_code, train_name, epochs=num_epoch)
 
-			
+
 		if self.model_name == 'Seq2Seq':
 			train_name, train_code, val_name, val_code, naming_data, hyperparams['n_tokens'] = trainModel.split_data(train_names, train_codes, hyperparams['output_length'], hyperparams['input_length'], pct_train)
 			hyperparams['is_embedding'] = False
@@ -170,8 +167,8 @@ class trainModel(object):
 		predict_idx = np.argmax(predict_probs, axis=2)
 
 		print('evaluate...')
-		exact_match = trainModel.exact_match(naming_data, predict_idx, val_name)
-		precision, recall, f1 = trainModel.evaluate_tokens(naming_data, predict_idx, val_name)
+		exact_match, _ = trainModel.exact_match(naming_data, predict_idx, val_name)
+		precision, recall, f1, _, _ = trainModel.evaluate_tokens(naming_data, predict_idx, val_name)
 		return model, exact_match, precision, recall, f1, naming_data
 
 	@staticmethod
@@ -226,15 +223,12 @@ class trainModel(object):
 				n_correct += 1
 		print ('n_extact_correct = ', n_correct)
 		print ('n_samples = ', n_samples)
-		print ('correct suggestions:')
 		correct_idx = np.array(correct_idx, dtype=np.object)
 		correct_suggestions = trainModel.show_names(naming_data, correct_idx)
-		for i in range(len(correct_suggestions)):
-			print (str(correct_suggestions[i]))
-		return n_correct/float(n_samples)
+		return n_correct/float(n_samples), correct_suggestions
 
 	@staticmethod
-	def evaluate_tokens(naming_data, predict_idx, val_name):
+	def evaluate_tokens(naming_data, predict_idx, val_name, threshold=0.5):
 		sum_precision = 0.0
 		sum_recall = 0.0
 		sum_f1 = 0.0
@@ -245,7 +239,8 @@ class trainModel(object):
 		assert predict_idx.shape == val_name.shape, (predict_idx.shape, val_name.shape)
 
 		n_samples, n_timesteps = predict_idx.shape
-
+                correct_idx = []
+                original_idx = []
 		for i in range(n_samples):
 			val_start = 0
 			val_end = 0
@@ -293,6 +288,10 @@ class trainModel(object):
 			else:
 				f1 = 0.0
 
+                        if precision >= threshold:
+                            correct_idx.append(predict_idx[i])
+                            original_idx.append(val_name[i])
+
 			sum_precision += precision
 			sum_recall += recall
 			sum_f1 += f1
@@ -301,7 +300,11 @@ class trainModel(object):
 		average_precision = sum_precision / float (n_samples)
 		average_recall = sum_recall / float (n_samples)
 		average_f1 = sum_f1 / float (n_samples)
-		return average_precision, average_recall, average_f1
+                correct_idx = np.array(correct_idx, dtype = np.object)
+                original_idx = np.array(original_idx, dtype = np.object)
+                correct_suggestions = trainModel.show_names(naming_data, correct_idx)
+                original_names = trainModel.show_names(naming_data, original_idx)
+		return average_precision, average_recall, average_f1, correct_suggestions, original_names
 
 	@staticmethod
 	def show_names(naming_data, predict_idx):
@@ -325,9 +328,9 @@ class trainModel(object):
 		id_test_name, id_test_code = model.naming_data.get_data_for_simple_seq2seq(test_names, test_codes, model.hyperparams['output_length'], model.hyperparams['input_length'])
 		predict_probs = model.model.predict(id_test_code)
 		predict_idx = np.argmax(predict_probs, axis=2)
-		exact_match = trainModel.exact_match(model.naming_data, predict_idx, id_test_name)
-		precision, recall, f1 = trainModel.evaluate_tokens(model.naming_data, predict_idx, id_test_name)
-		return exact_match, precision, recall, f1
+		exact_match, correct_suggestions = trainModel.exact_match(model.naming_data, predict_idx, id_test_name)
+		precision, recall, f1, suggestions, original_names = trainModel.evaluate_tokens(model.naming_data, predict_idx, id_test_name)
+		return exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names
 
 if __name__ == '__main__':
 
@@ -359,12 +362,18 @@ if __name__ == '__main__':
 		print ('the number of testing samples: ', len(test_names))
 		train_model = trainModel(train_names, train_codes, model_name)
 		train_model.grid_search()
-
-		pickle.dump(train_model, train_model.output_folder+'/best_'+model_name)
 		# test
-		print ('test in ', len(test_names), ':')
-		exact_match, precision, recall, f1 = trainModel.test(train_model, test_names, test_codes)
+		print ('test in ', len(test_names), 'samples:')
+		exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names = trainModel.test(train_model, test_names, test_codes)
 		print ('exact match = ', exact_match)
 		print ('precision = ', precision)
 		print ('recall = ', recall)
 		print ('f1 = ', f1)
+                with open(train_model.output_folder + '/exact_predictions.txt', 'w') as f:
+                    for name in correct_suggestions:
+                        f.write(str(name) + '\n')
+                with open(train_model.output_folder + '/tokens_predictions.txt', 'w') as f:
+                    for i, name in enumerate(suggestions):
+                        f.write('method name: ' + str(original_names[i]) + '\n')
+                        f.write('prediction: ' + str(name) + '\n')
+                        f.write('\n')
