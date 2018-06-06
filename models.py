@@ -12,7 +12,7 @@ from seq2seq.models import SimpleSeq2Seq, Seq2Seq, AttentionSeq2Seq
 from generate_datasets import DataGenerator
 
 class trainModel(object):
-	def __init__(self, train_names, train_codes, model_name, hyperparams=None):
+	def __init__(self, train_names, train_codes, model_name, output_folder, hyperparams=None):
 		self.train_names = train_names
 		self.train_codes = train_codes
 
@@ -23,7 +23,7 @@ class trainModel(object):
 		self.parameters = None # if the model has been trained, parameters will not be None.
 		self.naming_data = None # the dictionary to decode/encode tokens
 
-		self.output_folder = self.model_name + 'Results'
+		self.output_folder = output_folder
 		if not os.path.exists(self.output_folder):
 			os.mkdir(self.output_folder)
 
@@ -333,47 +333,78 @@ class trainModel(object):
 		return exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names
 
 if __name__ == '__main__':
-
+	# set run environment
 	os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 	config = tf.ConfigProto()
 	config.gpu_options.allow_growth=True
 	sess = tf.Session(config=config)
 	KTF.set_session(sess)
 
+	# set input_folder_path and model_name
 	if len(sys.argv) > 2:
-		filepath = sys.argv[1]
+		folder_path = sys.argv[1]
 		model_name = sys.argv[2]
+	else:
+		raise TypeError
 
-
-		names, codes, sentences = DataGenerator.get_input_file(filepath)
+	# extract methods in input_folder_path
+	with open('test_summarization.txt', 'a+') as f_all:
+		print ('folder_path: ', folder_path)
+		f_all.write('folder_path: %s\n' % folder_path)
+		files = os.listdir(folder_path)
+		names = []
+		codes = []
+		sentences = []
+		for file in files:
+			if not os.path.isdir(file):
+				t_names, t_codes, t_sentences = DataGenerator.get_input_file(folder_path + '/' + file)
+				print ('len(t_names)', len(t_names))
+				names.extend(t_names)
+				codes.extend(t_codes)
+				sentences.extend(t_sentences)
+				print ('len(names)', len(names))
+		names = np.array(names, dtype = np.object)		
+		codes = np.array(codes, dtype = np.object)		
+		sentences = np.array(sentences, dtype = np.object)		
 		assert len(names) == len(codes), (len(names), len(codes))
 
-		#0.7 for train and val, 0.3 for test
+		# split data into training and testing dataset
 		train_size = int(0.7 * len(names))
 		idx = np.arange(len(names))
 		#np.random.shuffle(idx)
-
 		train_names = names[idx[:train_size]]
 		train_codes = codes[idx[:train_size]]
 		test_names = names[idx[train_size:]]
 		test_codes = codes[idx[train_size:]]
-
 		print ('the number of training and validation samples: ', len(train_names))
 		print ('the number of testing samples: ', len(test_names))
-		train_model = trainModel(train_names, train_codes, model_name)
+		f_all.write('training and validation samples: %d\n' % len(train_names))
+
+		# set output_folder to be the input_folder_path/model_name_Results/
+		output_folder = folder_path + '/' + model_name + '_Results'
+
+		# train
+		train_model = trainModel(train_names, train_codes, model_name, output_folder)
 		train_model.grid_search()
+		
 		# test
 		print ('test in ', len(test_names), 'samples:')
+		f_all.write('test in %d samples:\n' % len(test_names))
 		exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names = trainModel.test(train_model, test_names, test_codes)
 		print ('exact match = ', exact_match)
 		print ('precision = ', precision)
 		print ('recall = ', recall)
 		print ('f1 = ', f1)
-                with open(train_model.output_folder + '/exact_predictions.txt', 'w') as f:
-                    for name in correct_suggestions:
-                        f.write(str(name) + '\n')
-                with open(train_model.output_folder + '/tokens_predictions.txt', 'w') as f:
-                    for i, name in enumerate(suggestions):
-                        f.write('method name: ' + str(original_names[i]) + '\n')
-                        f.write('prediction: ' + str(name) + '\n')
-                        f.write('\n')
+		f_all.write('exact match = %d, ' % exact_match)
+		f_all.write('precision = %f, ' % precision)
+		f_all.write('recall = %f, ' % recall)
+		f_all.write('f1 = %f \n\n' % f1)
+	
+		with open(output_folder + '/exact_predictions.txt', 'w') as f:
+			for name in correct_suggestions:
+				f.write(str(name) + '\n')
+		with open(output_folder + '/tokens_predictions.txt', 'w') as f:
+			for i, name in enumerate(suggestions):
+				f.write('method name: ' + str(original_names[i]) + '\n')
+				f.write('prediction: ' + str(name) + '\n')
+				f.write('\n')

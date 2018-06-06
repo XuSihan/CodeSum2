@@ -1,0 +1,1 @@
+[{"methodBody": ["METHOD_START", "{", "return   JournalConverterManagerUtil .  _ journalConverterManager . getDDMXSD ( journalXSD ,    defaultLocale )  ;", "}", "METHOD_END"], "methodName": ["getDDMXSD"], "fileName": "com.liferay.journal.kernel.util.JournalConverterManagerUtil"}]

@@ -1,0 +1,1 @@
+[{"methodBody": ["METHOD_START", "{", "Test . run (  )  ;", "}", "METHOD_END"], "methodName": ["main"], "fileName": "Test"}, {"methodBody": ["METHOD_START", "{", "System . out . println (  \" Test \"  )  ;", "}", "METHOD_END"], "methodName": ["run"], "fileName": "Test"}]

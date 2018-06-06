@@ -1,0 +1,1 @@
+[{"methodBody": ["METHOD_START", "{", "if    ( dnsPort    !  =    null )     {", "Lup . getDefaultResolver (  )  . setPort ( dnsPort )  ;", "}", "setup ( host ,    port ,    databaseName ,    timeZone )  ;", "}", "METHOD_END"], "methodName": ["initialize"], "fileName": "com.facebook.presto.hive.TestHiveClient"}]
