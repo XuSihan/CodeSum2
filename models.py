@@ -58,8 +58,8 @@ class trainModel(object):
 		input_length = [300]
 		depth = [1]
 		dropout = [0.3]
-		lr = [0.001]
-		num_epoch = [1, 50, 100]
+		lr = [0.0005]
+		num_epoch = [2, 50, 100]
 		pct_train = 0.9
 		peek = [True]
 		broadcast_state = [True]
@@ -351,7 +351,7 @@ if __name__ == '__main__':
 		#0.7 for train and val, 0.3 for test
 		train_size = int(0.7 * len(names))
 		idx = np.arange(len(names))
-		np.random.shuffle(idx)
+		#np.random.shuffle(idx)
 
 		train_names = names[idx[:train_size]]
 		train_codes = codes[idx[:train_size]]
