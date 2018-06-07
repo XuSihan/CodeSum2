@@ -235,9 +235,9 @@ def Seq2Seq(output_dim, output_length, hidden_dim=None, batch_input_shape=None,
 
 def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
                      batch_size=None, input_shape=None, input_length=None,
-                     is_embedding=True, embedding_dim=None, n_tokens=None,
+                     is_embedding=True, embedding_dim=None, n_tokens=1000,
                      input_dim=None, hidden_dim=None, depth=1,
-                     bidirectional=True, unroll=False, stateful=False, dropout=0.0,):
+                     bidirectional=False, unroll=False, stateful=False, dropout=0.0,):
     '''
     This is an attention Seq2seq model based on [3].
     Here, there is a soft allignment between the input and output sequence elements.
@@ -284,51 +284,46 @@ def AttentionSeq2Seq(output_dim, output_length, batch_input_shape=None,
 
     if hidden_dim is None:
         hidden_dim = output_dim
-
     if is_embedding:
         _input = Input(batch_shape=shape)
+        _input._keras_history[0].supports_masking = True
     else:
         i = Input(shape=(input_length,), name='sentence_input', dtype='int32')
+        i._keras_history[0].supports_masking = True
         if embedding_dim is None:
             embedding_dim = hidden_dim
-        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, mask_zero=True, input_length=input_length, trainable=False)(i)
+        _input = Embedding(input_dim=n_tokens, output_dim=embedding_dim, input_length=input_length)(i)
         shape = (batch_size,) + (input_length,) + (embedding_dim,)
-	# _input._keras_history[0].supports_masking = True
 
     encoder = RecurrentSequential(unroll=unroll, stateful=stateful,
                                   return_sequences=True)
-    encoder.add(LSTMCell(hidden_dim, batch_input_shape=(shape[0], shape[2])))
+    encoder.add(LSTMCell(hidden_dim, batch_input_shape=(shape[0], shape[-1])))
 
     for _ in range(1, depth[0]):
         encoder.add(Dropout(dropout))
         encoder.add(LSTMCell(hidden_dim))
-
     if bidirectional:
         encoder = Bidirectional(encoder, merge_mode='sum')
         encoder.forward_layer.build(shape)
         encoder.backward_layer.build(shape)
         # patch
         encoder.layer = encoder.forward_layer
-
-    encoded = encoder(_input)
     decoder = RecurrentSequential(decode=True, output_length=output_length,
                                   unroll=unroll, stateful=stateful)
     decoder.add(Dropout(dropout, batch_input_shape=(shape[0], shape[1], hidden_dim)))
     if depth[1] == 1:
         decoder.add(AttentionDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim))
     else:
-        decoder.add(AttentionDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim))
+        decoder.add(AttentionDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim))
         for _ in range(depth[1] - 2):
             decoder.add(Dropout(dropout))
             decoder.add(LSTMDecoderCell(output_dim=hidden_dim, hidden_dim=hidden_dim))
         decoder.add(Dropout(dropout))
         decoder.add(LSTMDecoderCell(output_dim=output_dim, hidden_dim=hidden_dim))
-
+    x = encoder(_input)
+    decoder_outputs = decoder(x)
+    output = TimeDistributed(Dense(n_tokens, activation='softmax'))(decoder_outputs)
     if is_embedding:
-        inputs = _input
+        return Model(_input, output)
     else:
-        inputs = i
-    decoded = decoder(encoded)
-    output = TimeDistributed(Dense(n_tokens, activation='softmax'))(decoded)
-    model = Model(inputs, output)
-    return model
+        return Model(i, output)
