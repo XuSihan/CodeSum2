@@ -63,7 +63,7 @@ class trainModel(object):
 		pct_train = 0.9
 		peek = [True]
 		broadcast_state = [True]
-		bidirectional = [False]
+		bidirectional = [False, True]
 		best_f1 = 0
 		# grid search
 		with open(self.output_folder + '/' + 'grid_search.txt', 'w') as f:
@@ -125,41 +125,23 @@ class trainModel(object):
 
 	def train(self, train_names, train_codes, hyperparams, pct_train=0.8, lr=0.01, num_epoch=100):
 		if self.model_name == 'SimpleSeq2Seq' or self.model_name == 'AttentionSeq2Seq':
-			# split data into  training and validation
 			train_name, train_code, val_name, val_code, naming_data, hyperparams['n_tokens'] = trainModel.split_data(train_names, train_codes, hyperparams['output_length'], hyperparams['input_length'], pct_train)
-			# set hyperparams
 			hyperparams['is_embedding'] = False
-			# convert target name into one-hot encoding
 			train_name = trainModel.one_hot_name(train_name, hyperparams['n_tokens'])
-			# check if required params exist
 			required_params = ['output_dim', 'output_length', 'input_length', 'is_embedding', 'n_tokens']
 			for param in required_params:
 				assert param in hyperparams, (param)
-			# create the model
 			if self.model_name == 'SimpleSeq2Seq':
 				model = SimpleSeq2Seq(**hyperparams)
 			elif self.model_name == 'AttentionSeq2Seq':
 				model = AttentionSeq2Seq(**hyperparams)
-                        else:
-                            raise TypeError
+			elif self.model_name == 'Seq2Seq':
+				model = Seq2Seq(**hyperparams)
+			else:
+				raise TypeError
 			my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
 			model.compile(optimizer=my_adam, loss='categorical_crossentropy')
 			print ('fit...')
-			model.fit(train_code, train_name, epochs=num_epoch)
-
-
-		if self.model_name == 'Seq2Seq':
-			train_name, train_code, val_name, val_code, naming_data, hyperparams['n_tokens'] = trainModel.split_data(train_names, train_codes, hyperparams['output_length'], hyperparams['input_length'], pct_train)
-			hyperparams['is_embedding'] = False
-			train_name = trainModel.one_hot_name(train_name, hyperparams['n_tokens'])
-			# check if required params exist
-			required_params = ['output_dim', 'output_length', 'input_length', 'is_embedding', 'n_tokens']
-			for param in required_params:
-				assert param in hyperparams, (param)
-			# create the model
-			model = Seq2Seq(**hyperparams)
-			my_adam = optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-			model.compile(optimizer=my_adam, loss='categorical_crossentropy')
 			model.fit(train_code, train_name, epochs=num_epoch)
 
 		print ('predict...')
@@ -339,7 +321,12 @@ if __name__ == '__main__':
 	config.gpu_options.allow_growth=True
 	sess = tf.Session(config=config)
 	KTF.set_session(sess)
+	x = np.random.random((100, 300, 256))
+	y = np.random.random((100, 8, 1000))
 
+	model = AttentionSeq2Seq(output_dim=1000, hidden_dim=256, output_length=8, input_shape=(300, 256))
+	model.compile(loss='categorical_crossentropy', optimizer='sgd')
+	model.fit(x, y, epochs=1)
 	# set input_folder_path and model_name
 	if len(sys.argv) > 2:
 		folder_path = sys.argv[1]
