@@ -58,8 +58,8 @@ class trainModel(object):
 		input_length = [300]
 		depth = [1]
 		dropout = [0.3]
-		lr = [0.0005]
-		num_epoch = [2, 50, 100]
+		lr = [0.001]
+		num_epoch = [50]
 		pct_train = 0.9
 		peek = [True]
 		broadcast_state = [True]
@@ -363,9 +363,9 @@ if __name__ == '__main__':
 				codes.extend(t_codes)
 				sentences.extend(t_sentences)
 				print ('len(names)', len(names))
-		names = np.array(names, dtype = np.object)		
-		codes = np.array(codes, dtype = np.object)		
-		sentences = np.array(sentences, dtype = np.object)		
+		names = np.array(names, dtype = np.object)
+		codes = np.array(codes, dtype = np.object)
+		sentences = np.array(sentences, dtype = np.object)
 		assert len(names) == len(codes), (len(names), len(codes))
 
 		# split data into training and testing dataset
@@ -386,7 +386,7 @@ if __name__ == '__main__':
 		# train
 		train_model = trainModel(train_names, train_codes, model_name, output_folder)
 		train_model.grid_search()
-		
+
 		# test
 		print ('test in ', len(test_names), 'samples:')
 		f_all.write('test in %d samples:\n' % len(test_names))
@@ -399,7 +399,7 @@ if __name__ == '__main__':
 		f_all.write('precision = %f, ' % precision)
 		f_all.write('recall = %f, ' % recall)
 		f_all.write('f1 = %f \n\n' % f1)
-	
+
 		with open(output_folder + '/exact_predictions.txt', 'w') as f:
 			for name in correct_suggestions:
 				f.write(str(name) + '\n')
