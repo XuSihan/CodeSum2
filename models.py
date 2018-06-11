@@ -312,7 +312,7 @@ class trainModel(object):
 		predict_idx = np.argmax(predict_probs, axis=2)
 		exact_match, correct_suggestions = trainModel.exact_match(model.naming_data, predict_idx, id_test_name)
 		precision, recall, f1, suggestions, original_names = trainModel.evaluate_tokens(model.naming_data, predict_idx, id_test_name)
-		return exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names
+		return predict_idx, exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names
 
 if __name__ == '__main__':
 	# set run environment
@@ -375,22 +375,24 @@ if __name__ == '__main__':
 		train_model.grid_search()
 
 		# test
-		print ('test in ', len(test_names), 'samples:')
-		f_all.write('test in %d samples:\n' % len(test_names))
-		exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names = trainModel.test(train_model, test_names, test_codes)
+		predict_idx, exact_match, correct_suggestions, precision, recall, f1, suggestions, original_names = trainModel.test(train_model, test_names, test_codes)
+		print ('test in ', len(predict_idx), 'samples:')
 		print ('exact match = ', exact_match)
 		print ('precision = ', precision)
 		print ('recall = ', recall)
 		print ('f1 = ', f1)
-		f_all.write('exact match = %d, ' % exact_match)
+		f_all.write('test in %d samples:\n' % len(predict_idx))
+		f_all.write('exact match = %f, ' % exact_match)
 		f_all.write('precision = %f, ' % precision)
 		f_all.write('recall = %f, ' % recall)
 		f_all.write('f1 = %f \n\n' % f1)
 
 		with open(output_folder + '/exact_predictions.txt', 'w') as f:
+			f.write('test in %d samples:\n' % len(predict_idx))
 			for name in correct_suggestions:
 				f.write(str(name) + '\n')
 		with open(output_folder + '/tokens_predictions.txt', 'w') as f:
+			f.write('test in %d samples:\n' % len(predict_idx))
 			for i, name in enumerate(suggestions):
 				f.write('method name: ' + str(original_names[i]) + '\n')
 				f.write('prediction: ' + str(name) + '\n')
