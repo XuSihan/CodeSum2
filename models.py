@@ -58,8 +58,8 @@ class trainModel(object):
 		input_length = [300]
 		depth = [1]
 		dropout = [0.3]
-		lr = [0.001]
-		num_epoch = [50]
+		lr = [0.0005]
+		num_epoch = [50,100]
 		pct_train = 0.9
 		peek = [True]
 		broadcast_state = [True]
